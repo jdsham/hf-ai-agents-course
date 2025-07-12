@@ -6,6 +6,13 @@ import sys
 import os
 from unittest.mock import Mock, patch
 from langchain_core.messages import HumanMessage
+import tempfile
+import shutil
+import builtins
+import io
+import re
+import pytest
+from multi_agent_system import load_prompt, make_research_steps_and_results
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -400,3 +407,59 @@ class TestEdgeCases:
             }
             result = input_interface(initial_state)
             assert result["question"] == question 
+
+class TestPromptLoading:
+    def test_prompt_file_loading(self):
+        # Arrange: create a temp prompt file
+        temp_dir = tempfile.mkdtemp()
+        prompt_content = "Test prompt with {placeholder}."
+        prompt_file = os.path.join(temp_dir, "test_prompt.txt")
+        with open(prompt_file, "w", encoding="utf-8") as f:
+            f.write(prompt_content)
+        # Patch PROMPT_DIR to temp_dir
+        import multi_agent_system as mas
+        old_prompt_dir = mas.PROMPT_DIR
+        mas.PROMPT_DIR = temp_dir
+        try:
+            # Act
+            loaded = load_prompt("test_prompt.txt")
+            # Assert
+            assert loaded == prompt_content
+        finally:
+            mas.PROMPT_DIR = old_prompt_dir
+            shutil.rmtree(temp_dir)
+
+    def test_prompt_placeholders_present(self):
+        # Arrange
+        prompt = "This is a prompt with {question} and {research_steps_and_results}."
+        # Act & Assert
+        assert "{question}" in prompt
+        assert "{research_steps_and_results}" in prompt
+
+    def test_dynamic_prompt_building(self):
+        # Arrange
+        prompt = "Question: {question}\nResults: {research_steps_and_results}"
+        question = "What is AI?"
+        research_steps = ["Step 1", "Step 2"]
+        research_results = ["Result 1", "Result 2"]
+        # Act
+        result = make_research_steps_and_results(prompt, question, research_steps, research_results)
+        # Assert
+        assert "What is AI?" in result
+        assert "Step 1" in result and "Result 1" in result
+        assert "Step 2" in result and "Result 2" in result
+        # No unfilled placeholders
+        assert "{question}" not in result
+        assert "{research_steps_and_results}" not in result
+
+    def test_missing_prompt_file_raises(self):
+        # Act & Assert
+        with pytest.raises(FileNotFoundError):
+            load_prompt("nonexistent_prompt.txt")
+
+    def test_missing_placeholder_raises(self):
+        # Arrange
+        prompt = "Prompt with {missing_placeholder}"
+        # Act & Assert
+        with pytest.raises(KeyError):
+            prompt.format(question="test") 

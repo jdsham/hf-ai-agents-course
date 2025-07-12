@@ -764,6 +764,19 @@ The main graph must correctly route to the correct node based on the current ste
   - **Assert**: Decision logic is consistent and reliable
   - **Mock**: Create test scenarios that trigger different critic decisions
 
+### Prompt Loading and Dynamic Prompt Building
+- **Prompt File Loading**: Verify that each agent system prompt is loaded from the correct file in `src/prompts/`.
+  - **Assert**: The content of each loaded prompt matches the content of the corresponding file.
+  - **Mock**: Use a temporary or test prompt file with known content.
+- **Prompt Placeholders**: Verify that all required placeholders (e.g., `{question}`, `{research_steps_and_results}`) are present in the loaded prompt strings.
+  - **Assert**: Placeholders are found in the loaded prompt content.
+- **Dynamic Prompt Building**: Verify that dynamic prompt construction (e.g., using `.format()` or helper functions like `make_research_steps_and_results`) correctly fills in placeholders with provided values.
+  - **Assert**: The resulting prompt string contains the expected substituted values and no unfilled placeholders remain.
+  - **Mock**: Use test values for all placeholders and check the output string.
+- **Error Handling**: Verify that missing prompt files or missing placeholders raise appropriate errors and are logged.
+  - **Assert**: FileNotFoundError or KeyError is raised and logged when appropriate.
+  - **Mock**: Remove or rename a prompt file, or omit a placeholder in `.format()`.
+
 ## Test Implementation Status
 
 ### Current Test Files

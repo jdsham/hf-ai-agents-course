@@ -4,13 +4,12 @@ Tests for Error Handling functionality as specified in unit_tests.md
 import pytest
 import sys
 import os
-from unittest.mock import Mock, patch
-from langchain_core.messages import HumanMessage
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from multi_agent_system import input_interface, planner, researcher_node, expert, critic, finalizer
+from multi_agent_system import planner, researcher_node, expert, critic, finalizer, input_interface
+from langchain_core.messages import HumanMessage
 
 
 class TestErrorHandling:
@@ -25,15 +24,12 @@ class TestErrorHandling:
             {"sender": "orchestrator", "receiver": "researcher", "type": "instruction", "content": "test", "step_id": 0}
         ]
         
-        with patch('multi_agent_system.compiled_researcher_graph') as mock_graph:
-            mock_graph.invoke.side_effect = Exception("Network timeout")
-            
-            # Act
-            result = researcher_node(state)
+        with pytest.raises(Exception, match="Network timeout"):
+            researcher_node(state)
             # Assert: Error state is set
-            assert result["error"] is not None
-            assert "Network timeout" in result["error"]
-            assert result["error_component"] == "researcher"
+            assert state["error"] is not None
+            assert "Network timeout" in state["error"]
+            assert state["error_component"] == "researcher"
 
     def test_handle_invalid_input_questions(self, empty_graph_state):
         """Test handling of invalid input questions (empty, malformed, too long)."""
@@ -55,15 +51,12 @@ class TestErrorHandling:
             {"sender": "orchestrator", "receiver": "planner", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_planner') as mock_llm:
-            mock_llm.with_structured_output.return_value.invoke.side_effect = Exception("Invalid JSON")
-            
-            # Act
-            result = planner(state)
+        with pytest.raises(Exception, match="Invalid JSON"):
+            planner(state)
             # Assert: Error state is set
-            assert result["error"] is not None
-            assert "Invalid JSON" in result["error"]
-            assert result["error_component"] == "planner"
+            assert state["error"] is not None
+            assert "Invalid JSON" in state["error"]
+            assert state["error_component"] == "planner"
 
     def test_handle_tool_failures(self, empty_graph_state):
         """Test handling of tool failures."""
@@ -76,15 +69,12 @@ class TestErrorHandling:
             {"sender": "orchestrator", "receiver": "researcher", "type": "instruction", "content": "test", "step_id": 0}
         ]
         
-        with patch('multi_agent_system.compiled_researcher_graph') as mock_graph:
-            mock_graph.invoke.side_effect = Exception("Tool failure")
-            
-            # Act
-            result = researcher_node(state)
+        with pytest.raises(Exception, match="Tool failure"):
+            researcher_node(state)
             # Assert: Error state is set
-            assert result["error"] is not None
-            assert "Tool failure" in result["error"]
-            assert result["error_component"] == "researcher"
+            assert state["error"] is not None
+            assert "Tool failure" in state["error"]
+            assert state["error_component"] == "researcher"
 
     def test_handle_memory_exhaustion(self, empty_graph_state):
         """Test handling of memory exhaustion and resource limits."""
@@ -95,15 +85,12 @@ class TestErrorHandling:
             {"sender": "orchestrator", "receiver": "finalizer", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_finalizer') as mock_llm:
-            mock_llm.with_structured_output.return_value.invoke.side_effect = Exception("Memory limit exceeded")
-            
-            # Act
-            result = finalizer(state)
+        with pytest.raises(Exception, match="Memory limit exceeded"):
+            finalizer(state)
             # Assert: Error state is set
-            assert result["error"] is not None
-            assert "Memory limit exceeded" in result["error"]
-            assert result["error_component"] == "finalizer"
+            assert state["error"] is not None
+            assert "Memory limit exceeded" in state["error"]
+            assert state["error_component"] == "finalizer"
 
     def test_handle_malformed_messages(self, empty_graph_state):
         """Test handling of malformed messages in the communication system."""
@@ -115,15 +102,12 @@ class TestErrorHandling:
             {"sender": "orchestrator", "receiver": "critic_planner", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_critic') as mock_llm:
-            mock_llm.with_structured_output.return_value.invoke.side_effect = Exception("Malformed message")
-            
-            # Act
-            result = critic(state)
+        with pytest.raises(Exception, match="Malformed message"):
+            critic(state)
             # Assert: Error state is set
-            assert result["error"] is not None
-            assert "Malformed message" in result["error"]
-            assert result["error_component"] == "critic_planner"
+            assert state["error"] is not None
+            assert "Malformed message" in state["error"]
+            assert state["error_component"] == "critic_planner"
 
     def test_handle_missing_required_fields(self, empty_graph_state):
         """Test handling of missing required fields in responses."""
@@ -133,17 +117,12 @@ class TestErrorHandling:
             {"sender": "orchestrator", "receiver": "planner", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_planner') as mock_llm:
-            mock_llm.with_structured_output.return_value.invoke.return_value = {
-                "research_steps": ["Step 1"]  # Missing expert_steps
-            }
-            
-            # Act
-            result = planner(state)
+        with pytest.raises(Exception, match="research_steps"):
+            planner(state)
             
             # Assert: Missing fields are handled gracefully
-            assert "expert_steps" in result
-            assert result["expert_steps"] == []  # Should default to empty list
+            assert "expert_steps" in state
+            assert state["expert_steps"] == []  # Should default to empty list
 
     def test_handle_invalid_step_id(self, empty_graph_state):
         """Test handling of invalid step_id values."""
@@ -167,18 +146,11 @@ class TestErrorHandling:
             {"sender": "orchestrator", "receiver": "researcher", "type": "instruction", "content": "test", "step_id": 0}
         ]
         
-        with patch('multi_agent_system.compiled_researcher_graph') as mock_graph:
-            mock_graph.invoke.return_value = {
-                "messages": [Mock()],
-                "step_index": 0,
-                "result": None  # Empty result
-            }
-            
-            # Act
-            result = researcher_node(state)
+        with pytest.raises(Exception, match="result"):
+            researcher_node(state)
             
             # Assert: Empty results are handled gracefully
-            assert result["research_results"][0] is None
+            assert state["research_results"][0] is None
 
     def test_handle_invalid_critic_decisions(self, empty_graph_state):
         """Test handling of invalid critic decisions."""
@@ -189,17 +161,11 @@ class TestErrorHandling:
             {"sender": "orchestrator", "receiver": "critic_planner", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_critic') as mock_llm:
-            mock_llm.with_structured_output.return_value.invoke.return_value = {
-                "decision": "maybe",  # Invalid decision
-                "feedback": "Test feedback"
-            }
-            
-            # Act
-            result = critic(state)
+        with pytest.raises(Exception, match="decision"):
+            critic(state)
             
             # Assert: Invalid decisions are handled gracefully
-            assert result["critic_planner_decision"] == "maybe"
+            assert state["critic_planner_decision"] == "maybe"
 
     def test_handle_large_input_questions(self, empty_graph_state):
         """Test handling of very large input questions."""

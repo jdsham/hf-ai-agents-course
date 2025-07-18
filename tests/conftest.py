@@ -4,7 +4,6 @@ Pytest configuration and fixtures for multi-agent system tests.
 import pytest
 import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
 from typing import Dict, Any, List
 
 # Add src directory to path
@@ -17,93 +16,93 @@ from multi_agent_system import (
 
 
 @pytest.fixture
-def mock_llm_planner():
+def mock_llm_planner(mocker):
     """Mock the planner LLM to return predictable structured outputs."""
-    with patch('multi_agent_system.llm_planner') as mock:
-        mock.with_structured_output.return_value.invoke.return_value = {
-            "research_steps": ["Research step 1", "Research step 2"],
-            "expert_steps": ["Expert step 1", "Expert step 2"]
-        }
-        yield mock
+    mock = mocker.patch('multi_agent_system.llm_planner')
+    mock.with_structured_output.return_value.invoke.return_value = {
+        "research_steps": ["Research step 1", "Research step 2"],
+        "expert_steps": ["Expert step 1", "Expert step 2"]
+    }
+    return mock
 
 
 @pytest.fixture
-def mock_llm_researcher():
+def mock_llm_researcher(mocker):
     """Mock the researcher LLM to return predictable structured outputs."""
-    with patch('multi_agent_system.llm_researcher') as mock:
-        mock.with_structured_output.return_value.invoke.return_value = {
-            "result": "Research result content"
-        }
-        yield mock
+    mock = mocker.patch('multi_agent_system.llm_researcher')
+    mock.with_structured_output.return_value.invoke.return_value = {
+        "result": "Research result content"
+    }
+    return mock
 
 
 @pytest.fixture
-def mock_llm_expert():
+def mock_llm_expert(mocker):
     """Mock the expert LLM to return predictable structured outputs."""
-    with patch('multi_agent_system.llm_expert') as mock:
-        mock.with_structured_output.return_value.invoke.return_value = {
-            "expert_answer": "Expert answer content",
-            "reasoning_trace": "Expert reasoning trace"
-        }
-        yield mock
+    mock = mocker.patch('multi_agent_system.llm_expert')
+    mock.with_structured_output.return_value.invoke.return_value = {
+        "expert_answer": "Expert answer content",
+        "reasoning_trace": "Expert reasoning trace"
+    }
+    return mock
 
 
 @pytest.fixture
-def mock_llm_critic():
+def mock_llm_critic(mocker):
     """Mock the critic LLM to return predictable structured outputs."""
-    with patch('multi_agent_system.llm_critic') as mock:
-        mock.with_structured_output.return_value.invoke.return_value = {
-            "decision": "approve",
-            "feedback": "Good work"
-        }
-        yield mock
+    mock = mocker.patch('multi_agent_system.llm_critic')
+    mock.with_structured_output.return_value.invoke.return_value = {
+        "decision": "approve",
+        "feedback": "Good work"
+    }
+    return mock
 
 
 @pytest.fixture
-def mock_llm_finalizer():
+def mock_llm_finalizer(mocker):
     """Mock the finalizer LLM to return predictable structured outputs."""
-    with patch('multi_agent_system.llm_finalizer') as mock:
-        mock.with_structured_output.return_value.invoke.return_value = {
-            "final_answer": "Final answer content",
-            "final_reasoning_trace": "Final reasoning trace"
-        }
-        yield mock
+    mock = mocker.patch('multi_agent_system.llm_finalizer')
+    mock.with_structured_output.return_value.invoke.return_value = {
+        "final_answer": "Final answer content",
+        "final_reasoning_trace": "Final reasoning trace"
+    }
+    return mock
 
 
 @pytest.fixture
-def mock_tools():
+def mock_tools(mocker):
     """Mock all external tool calls."""
-    with patch('multi_agent_system.research_tools') as mock_research_tools, \
-         patch('multi_agent_system.expert_tools') as mock_expert_tools:
-        
-        # Mock research tools
-        mock_research_tools.__iter__.return_value = [
-            Mock(name="web_search", return_value="Search result"),
-            Mock(name="wikipedia", return_value="Wikipedia content"),
-            Mock(name="youtube_transcript", return_value="Transcript content"),
-            Mock(name="file_reader", return_value="File content")
-        ]
-        
-        # Mock expert tools
-        mock_expert_tools.__iter__.return_value = [
-            Mock(name="calculator", return_value="42"),
-            Mock(name="unit_converter", return_value="100 ft"),
-            Mock(name="python_repl", return_value="Execution result")
-        ]
-        
-        yield mock_research_tools, mock_expert_tools
+    mock_research_tools = mocker.patch('multi_agent_system.research_tools')
+    mock_expert_tools = mocker.patch('multi_agent_system.expert_tools')
+    
+    # Mock research tools
+    mock_research_tools.__iter__.return_value = [
+        mocker.Mock(name="web_search", return_value="Search result"),
+        mocker.Mock(name="wikipedia", return_value="Wikipedia content"),
+        mocker.Mock(name="youtube_transcript", return_value="Transcript content"),
+        mocker.Mock(name="file_reader", return_value="File content")
+    ]
+    
+    # Mock expert tools
+    mock_expert_tools.__iter__.return_value = [
+        mocker.Mock(name="calculator", return_value="42"),
+        mocker.Mock(name="unit_converter", return_value="100 ft"),
+        mocker.Mock(name="python_repl", return_value="Execution result")
+    ]
+    
+    return mock_research_tools, mock_expert_tools
 
 
 @pytest.fixture
-def mock_network():
+def mock_network(mocker):
     """Mock network calls to simulate success/failure scenarios."""
-    with patch('multi_agent_system.asyncio.run') as mock_run, \
-         patch('multi_agent_system.streamablehttp_client') as mock_client:
-        
-        mock_run.return_value = [Mock(), Mock(), Mock()]
-        mock_client.return_value.__aenter__.return_value = (Mock(), Mock(), Mock())
-        
-        yield mock_run, mock_client
+    mock_run = mocker.patch('multi_agent_system.asyncio.run')
+    mock_client = mocker.patch('multi_agent_system.streamablehttp_client')
+    
+    mock_run.return_value = [mocker.Mock(), mocker.Mock(), mocker.Mock()]
+    mock_client.return_value.__aenter__.return_value = (mocker.Mock(), mocker.Mock(), mocker.Mock())
+    
+    return mock_run, mock_client
 
 
 @pytest.fixture
@@ -181,24 +180,24 @@ def sample_expert_state():
 
 
 @pytest.fixture
-def mock_subgraphs():
+def mock_subgraphs(mocker):
     """Mock the compiled subgraphs."""
-    with patch('multi_agent_system.compiled_researcher_graph') as mock_researcher, \
-         patch('multi_agent_system.compiled_expert_graph') as mock_expert:
+    mock_researcher = mocker.patch('multi_agent_system.compiled_researcher_graph')
+    mock_expert = mocker.patch('multi_agent_system.compiled_expert_graph')
+    
+    mock_researcher.invoke.return_value = {
+        "messages": [mocker.Mock()],
+        "step_index": 0,
+        "result": "Research result"
+    }
+    
+    mock_expert.invoke.return_value = {
+        "messages": [mocker.Mock()],
+        "question": "Test question",
+        "research_steps": ["Research step 1"],
+        "research_results": ["Research result 1"],
+        "expert_answer": "Expert answer",
+        "expert_reasoning": "Expert reasoning"
+    }
         
-        mock_researcher.invoke.return_value = {
-            "messages": [Mock()],
-            "step_index": 0,
-            "result": "Research result"
-        }
-        
-        mock_expert.invoke.return_value = {
-            "messages": [Mock()],
-            "question": "Test question",
-            "research_steps": ["Research step 1"],
-            "research_results": ["Research result 1"],
-            "expert_answer": "Expert answer",
-            "expert_reasoning": "Expert reasoning"
-        }
-        
-        yield mock_researcher, mock_expert 
+    return mock_researcher, mock_expert 

@@ -5,15 +5,11 @@ import pytest
 import sys
 import os
 import logging
-from unittest.mock import Mock, patch, MagicMock
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from multi_agent_system import (
-    input_interface, planner, researcher_node, expert, critic, finalizer, orchestrator,
-    validate_state, validate_llm_response, handle_agent_error, set_error_state, log_error
-)
+from multi_agent_system import planner, researcher_node, expert, critic, finalizer, input_interface
 
 
 class TestErrorHandlingAndLogging:
@@ -23,11 +19,11 @@ class TestErrorHandlingAndLogging:
         """Test that error states are properly set and propagated."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         
         # Act - simulate an error
         error = Exception("Test error")
-        result = set_error_state(state, "test_component", error)
+        result = input_interface.set_error_state(state, "test_component", error)
         
         # Assert: Error state is set correctly
         assert result["error"] == "test_component failed: Test error"
@@ -42,7 +38,7 @@ class TestErrorHandlingAndLogging:
         state["current_step"] = "planner"
         
         # Act
-        result = orchestrator(state)
+        result = input_interface.orchestrator(state)
         
         # Assert: Orchestrator routes to finalizer when error state is present
         assert result["next_step"] == "finalizer"
@@ -53,11 +49,11 @@ class TestErrorHandlingAndLogging:
         """Test that state validation passes for valid states."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)  # Initialize all required fields
         
         # Act
-        result = validate_state(state)
+        result = input_interface.validate_state(state)
         
         # Assert: State validation passes
         assert result is True
@@ -71,7 +67,7 @@ class TestErrorHandlingAndLogging:
             del state["research_steps"]
         
         # Act
-        result = validate_state(state)
+        result = input_interface.validate_state(state)
         
         # Assert: State validation fails
         assert result is False
@@ -80,12 +76,12 @@ class TestErrorHandlingAndLogging:
         """Test that state validation fails for invalid field types."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)  # Initialize all required fields
         state["retry_count"] = "invalid_type"  # Should be int
         
         # Act
-        result = validate_state(state)
+        result = input_interface.validate_state(state)
         
         # Assert: State validation fails
         assert result is False
@@ -97,7 +93,7 @@ class TestErrorHandlingAndLogging:
         expected_fields = ["research_steps", "expert_steps"]
         
         # Act
-        result = validate_llm_response(response, expected_fields, "planner")
+        result = input_interface.validate_llm_response(response, expected_fields, "planner")
         
         # Assert: Response validation passes
         assert result is True
@@ -109,7 +105,7 @@ class TestErrorHandlingAndLogging:
         expected_fields = ["research_steps", "expert_steps"]
         
         # Act
-        result = validate_llm_response(response, expected_fields, "planner")
+        result = input_interface.validate_llm_response(response, expected_fields, "planner")
         
         # Assert: Response validation fails
         assert result is False
@@ -121,7 +117,7 @@ class TestErrorHandlingAndLogging:
         expected_fields = ["research_steps", "expert_steps"]
         
         # Act
-        result = validate_llm_response(response, expected_fields, "planner")
+        result = input_interface.validate_llm_response(response, expected_fields, "planner")
         
         # Assert: Response validation fails
         assert result is False
@@ -130,12 +126,12 @@ class TestErrorHandlingAndLogging:
         """Test that handle_agent_error properly sets error state."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)  # Initialize all required fields
         error = Exception("Test error")
         
         # Act
-        result = handle_agent_error(state, "test_component", error)
+        result = input_interface.handle_agent_error(state, "test_component", error)
         
         # Assert: Error state is set
         assert result["error"] == "test_component failed: Test error"
@@ -146,13 +142,13 @@ class TestErrorHandlingAndLogging:
         """Test that handle_agent_error routes to finalizer when retry limit exceeded."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)  # Initialize all required fields
         state["retry_count"] = 5  # At retry limit
         error = Exception("Test error")
         
         # Act
-        result = handle_agent_error(state, "test_component", error)
+        result = input_interface.handle_agent_error(state, "test_component", error)
         
         # Assert: Routes to finalizer
         assert result["next_step"] == "finalizer"
@@ -163,19 +159,19 @@ class TestErrorHandlingAndLogging:
         """Test that planner logs appropriate messages for start and completion."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         state["agent_messages"] = [
             {"sender": "orchestrator", "receiver": "planner", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_planner') as mock_llm:
+        with pytest.patch('multi_agent_system.llm_planner') as mock_llm:
             mock_llm.with_structured_output.return_value.invoke.return_value = {
                 "research_steps": ["step1"],
                 "expert_steps": ["step1"]
             }
             
-            with patch('multi_agent_system.logger') as mock_logger:
+            with pytest.patch('multi_agent_system.logger') as mock_logger:
                 # Act
                 planner(state)
                 
@@ -187,16 +183,16 @@ class TestErrorHandlingAndLogging:
         """Test that planner handles LLM failures gracefully."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         state["agent_messages"] = [
             {"sender": "orchestrator", "receiver": "planner", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_planner') as mock_llm:
+        with pytest.patch('multi_agent_system.llm_planner') as mock_llm:
             mock_llm.with_structured_output.return_value.invoke.side_effect = Exception("LLM failure")
             
-            with patch('multi_agent_system.logger') as mock_logger:
+            with pytest.patch('multi_agent_system.logger') as mock_logger:
                 # Act: Should not raise exception, should handle gracefully
                 result = planner(state)
                 
@@ -215,7 +211,7 @@ class TestErrorHandlingAndLogging:
         """Test that researcher logs appropriate messages for start and completion."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         state["current_research_index"] = 0
         state["research_steps"] = ["Research step"]
@@ -223,14 +219,14 @@ class TestErrorHandlingAndLogging:
             {"sender": "orchestrator", "receiver": "researcher", "type": "instruction", "content": "test", "step_id": 0}
         ]
         
-        with patch('multi_agent_system.compiled_researcher_graph') as mock_graph:
+        with pytest.patch('multi_agent_system.compiled_researcher_graph') as mock_graph:
             mock_graph.invoke.return_value = {
-                "messages": [Mock()],
+                "messages": [pytest.Mock()],
                 "step_index": 0,
                 "result": "Research result"
             }
             
-            with patch('multi_agent_system.logger') as mock_logger:
+            with pytest.patch('multi_agent_system.logger') as mock_logger:
                 # Act
                 researcher_node(state)
                 
@@ -242,20 +238,20 @@ class TestErrorHandlingAndLogging:
         """Test that expert logs appropriate messages for start and completion."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         state["agent_messages"] = [
             {"sender": "orchestrator", "receiver": "expert", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.compiled_expert_graph') as mock_graph:
+        with pytest.patch('multi_agent_system.compiled_expert_graph') as mock_graph:
             mock_graph.invoke.return_value = {
-                "messages": [Mock()],
+                "messages": [pytest.Mock()],
                 "expert_answer": "Expert answer",
                 "expert_reasoning": "Expert reasoning"
             }
             
-            with patch('multi_agent_system.logger') as mock_logger:
+            with pytest.patch('multi_agent_system.logger') as mock_logger:
                 # Act
                 expert(state)
                 
@@ -267,20 +263,20 @@ class TestErrorHandlingAndLogging:
         """Test that critic logs appropriate messages for start and completion."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         state["current_step"] = "critic_planner"
         state["agent_messages"] = [
             {"sender": "orchestrator", "receiver": "critic_planner", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_critic') as mock_llm:
+        with pytest.patch('multi_agent_system.llm_critic') as mock_llm:
             mock_llm.with_structured_output.return_value.invoke.return_value = {
                 "decision": "approve",
                 "feedback": "Good plan"
             }
             
-            with patch('multi_agent_system.logger') as mock_logger:
+            with pytest.patch('multi_agent_system.logger') as mock_logger:
                 # Act
                 critic(state)
                 
@@ -292,19 +288,19 @@ class TestErrorHandlingAndLogging:
         """Test that finalizer logs appropriate messages for start and completion."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         state["agent_messages"] = [
             {"sender": "orchestrator", "receiver": "finalizer", "type": "instruction", "content": "test", "step_id": None}
         ]
         
-        with patch('multi_agent_system.llm_finalizer') as mock_llm:
+        with pytest.patch('multi_agent_system.llm_finalizer') as mock_llm:
             mock_llm.with_structured_output.return_value.invoke.return_value = {
                 "final_answer": "Final answer",
                 "final_reasoning_trace": "Final reasoning"
             }
             
-            with patch('multi_agent_system.logger') as mock_logger:
+            with pytest.patch('multi_agent_system.logger') as mock_logger:
                 # Act
                 finalizer(state)
                 
@@ -316,9 +312,9 @@ class TestErrorHandlingAndLogging:
         """Test that input interface logs appropriate messages for start and completion."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         
-        with patch('multi_agent_system.logger') as mock_logger:
+        with pytest.patch('multi_agent_system.logger') as mock_logger:
             # Act
             input_interface(state)
             
@@ -330,7 +326,7 @@ class TestErrorHandlingAndLogging:
         """Test that input interface initializes error fields to None."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         
         # Act
         result = input_interface(state)
@@ -341,7 +337,7 @@ class TestErrorHandlingAndLogging:
 
     def test_tool_error_logging(self):
         """Test that tool errors are properly logged."""
-        with patch('multi_agent_system.logger') as mock_logger:
+        with pytest.patch('multi_agent_system.logger') as mock_logger:
             # Test calculator tool error logging
             from multi_agent_system import calculator
             result = calculator("invalid_expression")
@@ -356,16 +352,16 @@ class TestErrorHandlingAndLogging:
         """Test that orchestrator validates state after each step."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         state["current_step"] = "planner"
         
-        with patch('multi_agent_system.validate_state') as mock_validate:
+        with pytest.patch('multi_agent_system.validate_state') as mock_validate:
             mock_validate.return_value = False  # Simulate validation failure
             
-            with patch('multi_agent_system.logger') as mock_logger:
+            with pytest.patch('multi_agent_system.logger') as mock_logger:
                 # Act
-                orchestrator(state)
+                input_interface.orchestrator(state)
                 
                 # Assert: State validation is called and warning is logged
                 mock_validate.assert_called()
@@ -375,12 +371,12 @@ class TestErrorHandlingAndLogging:
         """Test that network errors are handled differently from other errors."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         network_error = Exception("Network timeout")
         
         # Act
-        result = handle_agent_error(state, "test_component", network_error)
+        result = input_interface.handle_agent_error(state, "test_component", network_error)
         
         # Assert: Network errors don't increment retry count
         assert result["retry_count"] == 0  # Should not increment for network errors
@@ -389,12 +385,12 @@ class TestErrorHandlingAndLogging:
         """Test that validation errors increment retry count."""
         # Arrange
         state = empty_graph_state.copy()
-        state["messages"] = [Mock(content="test question")]
+        state["messages"] = [pytest.Mock(content="test question")]
         state = input_interface(state)
         validation_error = ValueError("Invalid response structure")
         
         # Act
-        result = handle_agent_error(state, "test_component", validation_error)
+        result = input_interface.handle_agent_error(state, "test_component", validation_error)
         
         # Assert: Validation errors increment retry count
         assert result["retry_count"] == 1  # Should increment for validation errors 

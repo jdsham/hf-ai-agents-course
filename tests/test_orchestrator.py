@@ -5,7 +5,6 @@ Updated to reflect the new simplified 4-step orchestrator design
 import pytest
 import sys
 import os
-from unittest.mock import Mock, patch
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -443,52 +442,55 @@ class TestOrchestrator:
         assert "error" in result["final_answer"]
         assert "error" in result["final_reasoning_trace"]
 
-    def test_orchestrator_validates_state_after_steps(self, empty_graph_state):
+    def test_orchestrator_validates_state_after_steps(self, empty_graph_state, mocker):
         """Test that orchestrator validates state after each step."""
         # Arrange
         state = empty_graph_state.copy()
         state["current_step"] = "planner"
         
-        with patch('multi_agent_system.validate_state') as mock_validate:
-            mock_validate.return_value = False  # Simulate validation failure
-            
-            with patch('multi_agent_system.logger') as mock_logger:
-                # Act
-                orchestrator(state)
-                
-                # Assert: State validation is called and warning is logged
-                mock_validate.assert_called()
-                mock_logger.warning.assert_called_with("State validation failed in orchestrator")
+        mock_validate = mocker.patch('multi_agent_system.validate_state')
+        mock_validate.return_value = False  # Simulate validation failure
+        
+        mock_logger = mocker.patch('multi_agent_system.logger')
+        
+        # Act
+        orchestrator(state)
+        
+        # Assert: State validation is called and warning is logged
+        mock_validate.assert_called()
+        mock_logger.warning.assert_called_with("State validation failed in orchestrator")
 
-    def test_orchestrator_logs_start_and_completion(self, empty_graph_state):
+    def test_orchestrator_logs_start_and_completion(self, empty_graph_state, mocker):
         """Test that orchestrator logs appropriate messages for start and completion."""
         # Arrange
         state = empty_graph_state.copy()
         state["current_step"] = "planner"
         
-        with patch('multi_agent_system.logger') as mock_logger:
-            # Act
-            orchestrator(state)
-            
-            # Assert: Appropriate log messages are generated
-            mock_logger.info.assert_any_call("Orchestrator starting execution. Current step: planner")
-            mock_logger.info.assert_any_call("Orchestrator completed successfully. Next step: critic_planner")
+        mock_logger = mocker.patch('multi_agent_system.logger')
+        
+        # Act
+        orchestrator(state)
+        
+        # Assert: Appropriate log messages are generated
+        mock_logger.info.assert_any_call("Orchestrator starting execution. Current step: planner")
+        mock_logger.info.assert_any_call("Orchestrator completed successfully. Next step: critic_planner")
 
-    def test_orchestrator_handles_exceptions_gracefully(self, empty_graph_state):
+    def test_orchestrator_handles_exceptions_gracefully(self, empty_graph_state, mocker):
         """Test that orchestrator handles exceptions gracefully."""
         # Arrange
         state = empty_graph_state.copy()
         state = input_interface(state)
         state["current_step"] = "planner"
         
-        with patch('multi_agent_system.determine_next_step') as mock_determine:
-            mock_determine.side_effect = Exception("Test exception")
-            
-            with patch('multi_agent_system.logger') as mock_logger:
-                # Act
-                result = orchestrator(state)
-                
-                # Assert: Exception is caught and logged
-                mock_logger.error.assert_called_with("Error in orchestrator: Test exception | Current step: planner")
-                assert result["error"] == "orchestrator failed: Test exception"
-                assert result["error_component"] == "orchestrator" 
+        mock_determine = mocker.patch('multi_agent_system.determine_next_step')
+        mock_determine.side_effect = Exception("Test exception")
+        
+        mock_logger = mocker.patch('multi_agent_system.logger')
+        
+        # Act
+        result = orchestrator(state)
+        
+        # Assert: Exception is caught and logged
+        mock_logger.error.assert_called_with("Error in orchestrator: Test exception | Current step: planner")
+        assert result["error"] == "orchestrator failed: Test exception"
+        assert result["error_component"] == "orchestrator" 

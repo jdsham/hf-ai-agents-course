@@ -4,16 +4,15 @@ Tests for Communication functionality as specified in unit_tests.md
 import pytest
 import sys
 import os
-from unittest.mock import Mock, patch
-from typing import List, Dict, Any
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from multi_agent_system import (
     send_message, get_agent_conversation, convert_agent_messages_to_langchain,
-    AgentMessage, HumanMessage, AIMessage, input_interface
+    AgentMessage, input_interface
 )
+from langchain_core.messages import HumanMessage, AIMessage
 
 
 class TestCommunication:

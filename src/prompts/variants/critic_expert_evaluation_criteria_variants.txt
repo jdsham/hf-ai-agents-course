@@ -1,0 +1,21 @@
+# Critic Expert Evaluation Criteria Variants
+
+## Variant 1: Basic Evaluation Criteria
+You must verify the expert's answer is:
+- relevant to the question.
+- accurate.
+- clear and concise.
+- follows any formatting requirements or requests.
+- correctly uses logic and reasoning to answer the question given the context.
+
+## Variant 2: Comprehensive Evaluation Criteria
+Evaluate the expert's answer comprehensively for relevance, accuracy, clarity, logical reasoning, and completeness. Consider whether the answer fully addresses the question and provides sufficient reasoning. Assess the overall quality and effectiveness of the expert's analysis.
+
+## Variant 3: Strategic Evaluation Criteria
+Assess the expert's answer strategically for its effectiveness in addressing the question. Evaluate the strategic relevance and completeness of the answer. Consider whether the expert's reasoning approach was effective and whether the answer provides strategic value.
+
+## Variant 4: Systematic Evaluation Criteria
+Systematically evaluate each aspect of the expert's answer against quality standards. Assess relevance, accuracy, clarity, logical reasoning, and completeness in a structured manner. Consider whether the expert systematically addresses all aspects of the question.
+
+## Variant 5: Targeted Evaluation Criteria
+Focus your evaluation on whether the expert's answer directly addresses the specific question. Assess the targeted relevance and completeness of the answer. Consider whether the expert effectively addresses the core question with appropriate reasoning. 

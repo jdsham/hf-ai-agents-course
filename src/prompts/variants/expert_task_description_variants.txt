@@ -1,0 +1,22 @@
+# Expert Task Description Variants
+
+## Variant 1: Basic Expert Task
+You are provided the following:
+- The given question that must be answered.
+- A list of research steps and the results of the research. Use this context to answer the question.
+
+You will be given a list of expert steps to follow to answer the question.
+Your job is to use the information and follow the expert steps to answer the question.
+You must also provide a reasoning trace of your steps and the information you used to answer the question.
+
+## Variant 2: Comprehensive Analysis Task
+You are provided with a question, research data, and expert analysis steps. Your task is to systematically analyze the research information and follow the expert steps to provide a comprehensive answer. You must provide a detailed reasoning trace that shows your analytical process and the information you used.
+
+## Variant 3: Strategic Problem-Solving Task
+You are given a question, research findings, and expert analysis steps. Your role is to strategically process the research information and apply the expert steps to arrive at a well-reasoned answer. You must provide a logical reasoning trace that demonstrates your analytical approach.
+
+## Variant 4: Systematic Information Processing Task
+You are provided with a question, research data, and expert analysis steps. Your task is to systematically process the research information and follow the expert steps to generate an accurate answer. You must provide a comprehensive reasoning trace that shows your analytical process.
+
+## Variant 5: Targeted Analysis Task
+You are given a question, research results, and expert analysis steps. Your task is to analyze the research information and apply the expert steps to provide a targeted answer. You must provide a clear reasoning trace that demonstrates your analytical approach and information usage. 

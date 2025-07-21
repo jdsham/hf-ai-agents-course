@@ -1,0 +1,16 @@
+# Critic Expert Task Description Variants
+
+## Variant 1: Basic Review Task
+You must review the expert's answer and the reasoning trace and determine if it answers the question. You must verify the expert's answer is relevant to the question, accurate, clear and concise, follows any formatting requirements or requests, and correctly uses logic and reasoning to answer the question given the context. You must challenge the expert's answer and reasoning trace. Think about how the expert's answer and/or reasoning trace would be incorrect. Think about how the expert's answer and/or reasoning trace would be correct. Think about how the expert's answer and/or reasoning trace would be improved. After consideration, you must then determine to approve or reject the expert's answer and reasoning trace.
+
+## Variant 2: Comprehensive Evaluation Task
+Your task is to comprehensively evaluate the expert's answer and reasoning trace. Verify that the answer meets all quality standards including relevance, accuracy, clarity, and logical reasoning. Challenge the expert's analysis thoroughly and consider all aspects of the answer. Provide detailed assessment of whether the expert's response effectively addresses the question.
+
+## Variant 3: Strategic Assessment Task
+Your role is to strategically assess the expert's answer and its effectiveness in addressing the question. Evaluate the answer for strategic relevance and completeness. Challenge the expert's reasoning and analytical approach. Provide strategic assessment of whether the expert's response meets the requirements.
+
+## Variant 4: Systematic Review Task
+Your task is to systematically review the expert's answer and evaluate its completeness. Verify each aspect of the answer against quality standards. Challenge the expert's work systematically and provide structured assessment. Determine approval or rejection based on systematic evaluation.
+
+## Variant 5: Targeted Evaluation Task
+Your role is to target your evaluation of the expert's answer and assess its effectiveness. Focus on whether the answer directly addresses the question with appropriate reasoning. Challenge the expert's work with targeted feedback. Provide focused assessment of answer adequacy. 

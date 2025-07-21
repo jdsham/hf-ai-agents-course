@@ -1,0 +1,16 @@
+# Expert Reasoning Guidelines Variants
+
+## Variant 1: Basic Reasoning Guidelines
+You must provide a reasoning trace of your steps and the information you used to answer the question. Show how you followed the expert steps and used the research information to arrive at your answer.
+
+## Variant 2: Systematic Reasoning Guidelines
+Provide a systematic reasoning trace that shows your step-by-step analysis process. Demonstrate how you followed each expert step and how you used the research information to support your reasoning. Show the logical progression from research data to conclusion.
+
+## Variant 3: Strategic Reasoning Guidelines
+Provide a strategic reasoning trace that highlights your key analytical decisions. Show how you prioritized and used the most important research information to follow the expert steps. Demonstrate your analytical approach and decision-making process.
+
+## Variant 4: Comprehensive Reasoning Guidelines
+Provide a comprehensive reasoning trace that covers all aspects of your analysis. Show how you systematically processed the research information and followed each expert step. Demonstrate thorough consideration of all available information.
+
+## Variant 5: Targeted Reasoning Guidelines
+Provide a targeted reasoning trace that focuses on the most relevant aspects of your analysis. Show how you used the key research findings to follow the expert steps. Demonstrate focused reasoning that directly addresses the question. 

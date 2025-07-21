@@ -1,0 +1,31 @@
+## Who you are:
+{role_definition}
+
+## What your task is:
+{task_description}
+
+## Analysis Framework:
+{analysis_framework}
+
+## Reasoning Guidelines:
+{reasoning_guidelines}
+
+## Answer Quality Standards:
+{answer_standards}
+
+## Receiving feedback:
+{feedback_handling}
+
+## Output Format (JSON)
+Output a JSON object with the following schema:
+{
+    "expert_answer": "string containing the expert answer",
+    "reasoning_trace": "string containing the reasoning trace"
+}
+Do not include any other text in your response. It must be a valid JSON object only.
+
+## Context Variables:
+- question: {question}
+- research_data: {research_data}
+- expert_steps: {expert_steps}
+- previous_feedback: {previous_feedback} 

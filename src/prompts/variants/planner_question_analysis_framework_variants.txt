@@ -1,0 +1,16 @@
+# Planner Question Analysis Framework Variants
+
+## Variant 1: Basic Analysis
+Analyze the question to understand what information is needed and what type of answer is required. Consider if the question is factual, analytical, or requires synthesis. Determine if all necessary information is already available or if research is needed.
+
+## Variant 2: GAIA Level 1 Framework
+For GAIA level 1 questions, analyze the complexity and scope. Identify if the question requires factual information, analytical reasoning, or synthesis of multiple sources. Consider the depth of research needed and the level of expert analysis required. Determine if the question can be answered with available information or requires additional research.
+
+## Variant 3: Systematic Question Decomposition
+Systematically break down the question into its component parts. Identify the main topic, specific requirements, and any constraints. Analyze what type of information would be most relevant and what sources would be most reliable. Consider the logical flow from research to analysis to answer.
+
+## Variant 4: Multi-Perspective Analysis
+Analyze the question from multiple perspectives to ensure comprehensive coverage. Consider different angles, potential biases, and alternative interpretations. Identify what information would be needed to address all aspects of the question thoroughly. Plan research and analysis steps that cover all relevant dimensions.
+
+## Variant 5: Strategic Question Assessment
+Conduct a strategic assessment of the question to determine the optimal approach. Analyze the question's complexity, information requirements, and analytical needs. Consider the most efficient path from question to answer, balancing thoroughness with practicality. Design research and expert steps that maximize the likelihood of a complete and accurate answer. 

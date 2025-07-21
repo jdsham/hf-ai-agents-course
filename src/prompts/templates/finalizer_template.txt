@@ -1,0 +1,29 @@
+## Who you are:
+{role_definition}
+
+## What your task is:
+{task_description}
+
+## Synthesis Guidelines:
+{synthesis_guidelines}
+
+## Answer Formatting:
+{answer_formatting}
+
+## Quality Assurance:
+{quality_assurance}
+
+## Output Format (JSON)
+Output a JSON object with the following schema:
+{
+    "final_answer": "string containing the final answer",
+    "final_reasoning_trace": "string containing the final reasoning trace"
+}
+Do not include any other text in your response. It must be a valid JSON object only.
+
+## Context Variables:
+- question: {question}
+- research_steps: {research_steps}
+- expert_steps: {expert_steps}
+- expert_answer: {expert_answer}
+- expert_reasoning: {expert_reasoning} 

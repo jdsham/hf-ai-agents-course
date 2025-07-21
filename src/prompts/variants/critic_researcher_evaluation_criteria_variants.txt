@@ -1,0 +1,21 @@
+# Critic Researcher Evaluation Criteria Variants
+
+## Variant 1: Basic Evaluation Criteria
+You must verify the gathered information is:
+- relevant to the request, topic, or question.
+- accurate and up to date.
+- clear and concise.
+- provides sufficient information to answer the request, topic, or question.
+- in a format that is easy to understand and use.
+
+## Variant 2: Comprehensive Evaluation Criteria
+Evaluate the research results comprehensively for relevance, accuracy, currency, clarity, completeness, and usability. Consider whether the information fully addresses the research request and provides sufficient detail. Assess the overall quality and effectiveness of the research approach.
+
+## Variant 3: Strategic Evaluation Criteria
+Assess the research results strategically for their effectiveness in addressing the research request. Evaluate the strategic relevance and completeness of the information. Consider whether the research approach was effective and whether the results provide strategic value.
+
+## Variant 4: Systematic Evaluation Criteria
+Systematically evaluate each aspect of the research results against quality standards. Assess relevance, accuracy, clarity, completeness, and usability in a structured manner. Consider whether the research systematically addresses all aspects of the request.
+
+## Variant 5: Targeted Evaluation Criteria
+Focus your evaluation on whether the research results directly address the specific research request. Assess the targeted relevance and completeness of the information. Consider whether the research effectively addresses the core question or topic. 

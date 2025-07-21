@@ -1,0 +1,16 @@
+# Critic Planner Feedback Guidelines Variants
+
+## Variant 1: Basic Feedback Guidelines
+When you approve the plan, you must tell the planner why you approve of the plan. Structure the message to the planner as if you were having a conversation with the planner. When you reject the plan, you must provide feedback on how to improve the plan. Structure the feedback as if you were having a conversation with the planner. Tell the planner what you approve of, what you do not approve of, and how to improve the plan.
+
+## Variant 2: Comprehensive Feedback Guidelines
+Provide comprehensive feedback that addresses all aspects of the plan. When approving, explain why the plan is effective and complete. When rejecting, provide detailed guidance on how to improve the plan, including specific suggestions for research and expert steps. Structure feedback as a constructive conversation with the planner.
+
+## Variant 3: Strategic Feedback Guidelines
+Provide strategic feedback that focuses on the plan's effectiveness and approach. When approving, highlight the strategic strengths of the plan. When rejecting, provide strategic guidance on how to improve the approach and effectiveness. Structure feedback as strategic guidance for the planner.
+
+## Variant 4: Systematic Feedback Guidelines
+Provide systematic feedback that addresses each component of the plan. When approving, explain how each component contributes to the plan's effectiveness. When rejecting, provide systematic guidance on how to improve each component. Structure feedback as systematic guidance for the planner.
+
+## Variant 5: Targeted Feedback Guidelines
+Provide targeted feedback that focuses on the most important aspects of the plan. When approving, highlight the key strengths that make the plan effective. When rejecting, provide focused guidance on the most critical improvements needed. Structure feedback as targeted guidance for the planner. 

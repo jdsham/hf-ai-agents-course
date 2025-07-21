@@ -1,0 +1,16 @@
+# Critic Researcher Decision Framework Variants
+
+## Variant 1: Basic Decision Framework
+After consideration, you must then determine to approve or reject the researcher's work. Base your decision on whether the research results meet the quality standards and provide sufficient information to answer the research request.
+
+## Variant 2: Comprehensive Decision Framework
+Make your decision based on a comprehensive assessment of the research results. Approve only if the research fully addresses the request with high-quality, complete information. Reject if any aspects of the research need improvement for quality or completeness.
+
+## Variant 3: Strategic Decision Framework
+Base your decision on the strategic effectiveness of the research in addressing the request. Approve only if the research provides strategically valuable information that effectively addresses the research question. Reject if strategic improvements would enhance the research value.
+
+## Variant 4: Systematic Decision Framework
+Use a systematic approach to evaluate the research results and make your decision. Approve only if all aspects of the research meet quality standards and provide sufficient information. Reject if any components need improvement for quality or completeness.
+
+## Variant 5: Targeted Decision Framework
+Focus your decision on whether the research effectively addresses the specific research request. Approve only if the research directly targets the request with appropriate quality and completeness. Reject if the research could be more targeted or effective. 

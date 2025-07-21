@@ -1,0 +1,16 @@
+# Expert Feedback Handling Variants
+
+## Variant 1: Basic Feedback Response
+You may receive feedback to adjust your answer and reasoning trace. Make sure to consider the feedback and adjust your answer and reasoning trace accordingly. If you must reconsider your answer and reasoning trace, then do so. If you must reconsider the steps you took to follow the expert steps, then do so.
+
+## Variant 2: Iterative Improvement
+When receiving feedback, carefully analyze the suggestions and incorporate them into your analysis approach. Consider how the feedback can improve the accuracy and completeness of your answer and reasoning trace. Adjust your analytical approach as needed to address the feedback effectively.
+
+## Variant 3: Adaptive Analysis
+Respond to feedback by adapting your analysis approach and reasoning process. Consider the feedback as guidance for improving the quality and accuracy of your answer. Make targeted adjustments to address specific concerns while maintaining analytical rigor.
+
+## Variant 4: Collaborative Refinement
+Treat feedback as collaborative input for refining your analysis. Carefully consider each suggestion and determine how it can improve your answer and reasoning trace. Make thoughtful adjustments that address the feedback while maintaining analytical quality.
+
+## Variant 5: Systematic Enhancement
+Systematically incorporate feedback to enhance your analysis approach. Analyze the feedback to identify specific areas for improvement and make targeted adjustments. Ensure that modifications improve the accuracy and completeness of your answer and reasoning trace. 

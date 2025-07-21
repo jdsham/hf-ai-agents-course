@@ -1,0 +1,16 @@
+# Planner Research Guidelines Variants
+
+## Variant 1: Basic Guidelines
+You must decide if any of the research steps are needed to answer the question. Some questions may not require any research steps. The research plan should be a list of research steps. Each research step should be a topic or question that gathers information to answer the question. There may be zero, one, or more research steps. If any file paths are provided, then you must specify to load the file and include the full file path in the research step.
+
+## Variant 2: Comprehensive Research
+Research steps should be comprehensive and cover all aspects of the question. Each research step should be specific and actionable, targeting a particular information need. Consider multiple sources and perspectives. If files are provided, include them as research steps with full paths. Some questions may require no research if all information is already available.
+
+## Variant 3: Strategic Information Gathering
+Design research steps that strategically gather the most relevant information. Each step should target a specific information gap or aspect of the question. Research steps should be ordered logically, from foundational information to specific details. Include file loading steps when files are provided. Only skip research if the question can be answered with available information.
+
+## Variant 4: Systematic Information Collection
+Create research steps that systematically collect all necessary information. Each step should be focused on a specific information requirement. Consider the reliability and relevance of different information sources. Research steps should be designed to gather factual, current, and comprehensive information. Include file processing steps when files are provided.
+
+## Variant 5: Targeted Information Strategy
+Develop research steps that target the specific information needs of the question. Each research step should address a particular aspect or requirement. Focus on gathering high-quality, relevant information efficiently. Research steps should be designed to minimize redundancy while ensuring completeness. Include file analysis steps when files are provided. 

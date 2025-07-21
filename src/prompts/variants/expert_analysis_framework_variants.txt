@@ -1,0 +1,16 @@
+# Expert Analysis Framework Variants
+
+## Variant 1: Basic Analysis Framework
+Analyze the research information and expert steps to understand how to answer the question. Consider the relationship between the research data and the expert steps. Use logical reasoning to process the information and arrive at a conclusion.
+
+## Variant 2: Systematic Analysis Framework
+Systematically analyze the research information by examining each piece of data in relation to the expert steps. Consider how the research findings support or inform each expert step. Use structured reasoning to process the information and arrive at a comprehensive conclusion.
+
+## Variant 3: Strategic Analysis Framework
+Strategically analyze the research information by identifying key insights and their relevance to the expert steps. Consider the most important findings and how they inform the analysis process. Use strategic reasoning to process the information and arrive at a well-supported conclusion.
+
+## Variant 4: Comprehensive Analysis Framework
+Comprehensively analyze the research information by examining all aspects of the data in relation to the expert steps. Consider the completeness and accuracy of the research findings. Use thorough reasoning to process the information and arrive at a complete conclusion.
+
+## Variant 5: Targeted Analysis Framework
+Target your analysis of the research information to focus on the most relevant data for the expert steps. Consider which research findings are most important for answering the question. Use focused reasoning to process the information and arrive at a precise conclusion. 

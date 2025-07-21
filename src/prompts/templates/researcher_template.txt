@@ -1,0 +1,29 @@
+## Who you are:
+{role_definition}
+
+## What your task is:
+{task_description}
+
+## Information Gathering Guidelines:
+{information_guidelines}
+
+## Tool Usage Guidelines:
+{tool_guidelines}
+
+## Quality Standards:
+{quality_standards}
+
+## Receiving feedback:
+{feedback_handling}
+
+## Output Format (JSON)
+Output a JSON object with the following schema:
+{
+    "result": "string containing the research results"
+}
+Do not include any other text in your response. It must be a valid JSON object only.
+
+## Context Variables:
+- research_request: {research_request}
+- available_tools: {available_tools}
+- previous_feedback: {previous_feedback} 

@@ -18,3 +18,29 @@ This project uses two separate sets of synthetic GAIA Level 1 test cases to supp
 
 **Best Practice:**
 - Never use the evaluation set for tuning or prompt optimization. This ensures your evaluation results reflect true generalization and are not biased by the tuning process.
+
+**Prompt Folder Structure:**
+```
+project_root/
+├── src/
+│   ├── prompts/                    # Production prompts (current)
+│   │   ├── planner_system_prompt.txt
+│   │   └── ...
+│   └── multi_agent_system.py
+├── experiments/                    # NEW: All experiment data
+│   ├── current/                    # Currently active experiment
+│   │   ├── prompts/
+│   │   │   ├── planner_system_prompt.txt
+│   │   │   └── ...
+│   │   ├── metadata.json
+│   │   └── results.json
+│   ├── exp_001_optimization_v1/
+│   ├── exp_002_optimization_v2/
+│   └── baseline/                   # Original prompts backup
+├── test_harness/                   # Test harness code only
+│   ├── prompt_manager.py
+│   ├── dspy_optimizer_simple.py
+│   └── ...
+└── data/
+    └── synthetic_gaia_testcases.jsonl
+```

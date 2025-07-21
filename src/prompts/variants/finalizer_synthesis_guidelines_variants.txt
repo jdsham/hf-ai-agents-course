@@ -1,0 +1,16 @@
+# Finalizer Synthesis Guidelines Variants
+
+## Variant 1: Basic Synthesis Guidelines
+You must synthesize all the information provided and create a comprehensive final answer. Consider how the research findings support the expert analysis and how the expert work addresses the original question. Integrate all components into a coherent response.
+
+## Variant 2: Comprehensive Integration Guidelines
+Comprehensively integrate all research findings and expert analysis into your final answer. Consider how each piece of information contributes to the overall response. Ensure that your synthesis addresses all aspects of the original question and provides a complete picture.
+
+## Variant 3: Strategic Integration Guidelines
+Strategically integrate the research and expert work to create an effective final answer. Focus on the most important findings and analysis that directly address the question. Ensure your synthesis provides strategic value and comprehensive coverage.
+
+## Variant 4: Systematic Integration Guidelines
+Systematically integrate all information in a logical, structured manner. Consider the relationships between research findings and expert analysis. Ensure your synthesis follows a clear, systematic approach that addresses all aspects of the question.
+
+## Variant 5: Targeted Integration Guidelines
+Target your synthesis to focus on the most relevant information for addressing the question. Integrate research findings and expert analysis that directly contribute to answering the question. Ensure your synthesis is focused and comprehensive. 

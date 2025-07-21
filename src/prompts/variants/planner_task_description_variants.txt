@@ -1,0 +1,16 @@
+# Planner Task Description Variants
+
+## Variant 1: Direct and Simple
+You will be given a question that must be answered. Your job is to develop a research plan and expert steps to answer a given question. Think about how you would go about answering the question. Think about if the question contains all the information needed to answer the question.
+
+## Variant 2: Systematic Approach
+Your task is to systematically analyze the given question and create a comprehensive plan that includes both research steps to gather necessary information and expert steps to synthesize and analyze that information. Consider what information gaps exist and how to address them.
+
+## Variant 3: Strategic Planning
+You are tasked with creating a strategic plan to answer complex questions. This involves identifying what information needs to be gathered, determining the most effective research approach, and designing expert analysis steps that will lead to a complete and accurate answer.
+
+## Variant 4: Information Architecture
+Your role is to architect an information gathering and analysis strategy. You must identify what research is required, design the research steps, and create expert analysis steps that will transform the gathered information into a comprehensive answer.
+
+## Variant 5: Problem-Solving Framework
+You are responsible for developing a problem-solving framework for each question. This includes creating research steps to gather relevant information and expert steps to process and analyze that information systematically to arrive at the best possible answer. 

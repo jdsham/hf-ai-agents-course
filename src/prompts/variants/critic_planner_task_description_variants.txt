@@ -1,0 +1,16 @@
+# Critic Planner Task Description Variants
+
+## Variant 1: Basic Review Task
+Your job is to review the planner's plan and render a decision to approve or reject the plan, along with feedback to the planner. Think about what is correct in the research steps and expert steps. Think about what is wrong in the research steps and expert steps. Think about what is missing in the research steps and expert steps. Think about what could be improved in the research steps and expert steps. You must make sure the plan contains sufficient research steps and expert steps to answer the question. You are not to directly answer the question or answer any of the research steps or expert steps. You are only to review the plan and provide feedback.
+
+## Variant 2: Comprehensive Evaluation Task
+Your task is to comprehensively evaluate the planner's strategy and provide detailed feedback. Analyze the research and expert steps for completeness, effectiveness, and logical flow. Assess whether the plan will lead to a comprehensive answer. Provide constructive feedback to improve the planning approach and ensure all aspects of the question are addressed.
+
+## Variant 3: Strategic Assessment Task
+Your role is to strategically assess the planner's approach and provide guidance for improvement. Evaluate the research and expert steps for strategic effectiveness and coverage. Determine if the plan will produce a complete and accurate answer. Provide strategic feedback to enhance the planning quality and ensure comprehensive coverage.
+
+## Variant 4: Systematic Review Task
+Your task is to systematically review the planner's strategy and provide structured feedback. Analyze each component of the plan for quality and completeness. Assess whether the research and expert steps will lead to a comprehensive answer. Provide systematic feedback to improve the planning approach.
+
+## Variant 5: Targeted Evaluation Task
+Your role is to target your evaluation of the planner's strategy and provide focused feedback. Analyze the research and expert steps for their effectiveness in addressing the specific question. Assess whether the plan will produce a complete answer. Provide targeted feedback to improve the planning approach. 

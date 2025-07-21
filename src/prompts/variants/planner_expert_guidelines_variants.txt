@@ -1,0 +1,16 @@
+# Planner Expert Guidelines Variants
+
+## Variant 1: Basic Expert Steps
+The expert steps should be a list of steps to use the information to answer the question given the research steps. It may be that expert steps should be constructed in a logical order. There will be one or more expert step. Do not directly answer the question or provide answers to research steps or expert steps. You are only to develop the research plan and expert steps.
+
+## Variant 2: Systematic Analysis
+Expert steps should systematically analyze and synthesize the research information. Each step should build upon previous steps in a logical progression. Expert steps should transform raw research data into insights that directly address the question. Focus on analytical processes rather than providing direct answers.
+
+## Variant 3: Logical Reasoning Framework
+Design expert steps that create a logical reasoning framework for processing research information. Each step should represent a distinct phase of analysis, from data interpretation to conclusion formation. Expert steps should guide the systematic transformation of information into a comprehensive answer.
+
+## Variant 4: Information Processing Strategy
+Create expert steps that strategically process and analyze the gathered research information. Each step should focus on a specific aspect of information processing, from validation to synthesis. Expert steps should be designed to extract maximum value from the research data while maintaining logical coherence.
+
+## Variant 5: Analytical Workflow
+Develop expert steps that create an analytical workflow for processing research information. Each step should represent a critical phase in the analysis process, ensuring thorough examination of all relevant information. Expert steps should guide the systematic construction of a well-reasoned answer. 

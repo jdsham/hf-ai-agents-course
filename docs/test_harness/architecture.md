@@ -8,85 +8,86 @@ This document describes the architecture of the test harness system for optimizi
 ### System Context Diagram
 
 ```mermaid
-architecture-beta
-    group production(cloud)[Production System]
-    group test_harness(cloud)[Test Harness System]
-    group external(cloud)[External Systems]
+graph TB
+    subgraph Production["Production System"]
+        main[main.py]
+        multi_agent[multi_agent_system.py]
+        prompts[Production Prompts]
+    end
     
-    service main(server)[main.py] in production
-    service multi_agent(server)[multi_agent_system.py] in production
-    service prompts(disk)[Production Prompts] in production
+    subgraph TestHarness["Test Harness System"]
+        optimizer[optimization_runner.py]
+        baseline[baseline_evaluator.py]
+        optuna[optuna_optimizer.py]
+        prompt_mgr[prompt_manager.py]
+        test_data_mgr[test_data_manager.py]
+        evaluator[evaluation_engine.py]
+        mlflow[mlflow_integration.py]
+        prompt_variations[Prompt Variations]
+        experiments[Experiments]
+        test_data[Test Data]
+    end
     
-    service optimizer(server)[optimization_runner.py] in test_harness
-    service baseline(server)[baseline_evaluator.py] in test_harness
-    service optuna(server)[optuna_optimizer.py] in test_harness
-    service prompt_mgr(server)[prompt_manager.py] in test_harness
-    service test_data_mgr(server)[test_data_manager.py] in test_harness
-    service evaluator(server)[evaluation_engine.py] in test_harness
-    service mlflow(server)[mlflow_integration.py] in test_harness
+    subgraph External["External Systems"]
+        langgraph[LangGraph System]
+        promptfoo[Promptfoo]
+        mlflow_server[MLflow Server]
+    end
     
-    service prompt_variations(disk)[Prompt Variations] in test_harness
-    service experiments(disk)[Experiments] in test_harness
-    service test_data(disk)[Test Data] in test_harness
+    main --> multi_agent
+    multi_agent --> prompts
     
-    service langgraph(server)[LangGraph System] in external
-    service promptfoo(server)[Promptfoo] in external
-    service mlflow_server(server)[MLflow Server] in external
-    
-    main:L --> R:multi_agent
-    multi_agent:L --> R:prompts
-    
-    optimizer:L --> R:baseline
-    optimizer:L --> R:optuna
-    optimizer:L --> R:evaluator
-    optimizer:L --> R:test_data_mgr
-    baseline:L --> R:prompt_mgr
-    baseline:L --> R:evaluator
-    baseline:L --> R:mlflow
-    optuna:L --> R:prompt_mgr
-    optuna:L --> R:evaluator
-    optuna:L --> R:mlflow
-    evaluator:L --> R:mlflow
-    test_data_mgr:L --> R:baseline
-    test_data_mgr:L --> R:optuna
-    test_data_mgr:L --> R:evaluator
-    prompt_mgr:L --> R:langgraph
-    evaluator:L --> R:langgraph
-    evaluator:L --> R:promptfoo
-    mlflow:L --> R:mlflow_server
+    optimizer --> baseline
+    optimizer --> optuna
+    optimizer --> evaluator
+    optimizer --> test_data_mgr
+    baseline --> prompt_mgr
+    baseline --> evaluator
+    baseline --> mlflow
+    optuna --> prompt_mgr
+    optuna --> evaluator
+    optuna --> mlflow
+    evaluator --> mlflow
+    test_data_mgr --> baseline
+    test_data_mgr --> optuna
+    test_data_mgr --> evaluator
+    prompt_mgr --> langgraph
+    evaluator --> langgraph
+    evaluator --> promptfoo
+    mlflow --> mlflow_server
 ```
 
 ### Component Architecture Diagram
 
 ```mermaid
-architecture-beta
-    group test_harness(cloud)[Test Harness System]
+graph TB
+    subgraph TestHarness["Test Harness System"]
+        runner[Optimization Runner]
+        baseline[Baseline Evaluator]
+        optimizer[Optuna Optimizer]
+        prompt_mgr[Prompt Manager]
+        test_data_mgr[Test Data Manager]
+        evaluator[Evaluation Engine]
+        mlflow[MLflow Integration]
+    end
     
-    service runner(server)[Optimization Runner] in test_harness
-    service baseline(server)[Baseline Evaluator] in test_harness
-    service optimizer(server)[Optuna Optimizer] in test_harness
-    service prompt_mgr(server)[Prompt Manager] in test_harness
-    service test_data_mgr(server)[Test Data Manager] in test_harness
-    service evaluator(server)[Evaluation Engine] in test_harness
-    service mlflow(server)[MLflow Integration] in test_harness
-    
-    runner:T --> B:baseline
-    runner:T --> B:optimizer
-    runner:T --> B:evaluator
-    runner:T --> B:test_data_mgr
-    baseline:L --> R:prompt_mgr
-    baseline:L --> R:evaluator
-    baseline:L --> R:mlflow
-    baseline:L --> R:test_data_mgr
-    optimizer:L --> R:prompt_mgr
-    optimizer:L --> R:evaluator
-    optimizer:L --> R:mlflow
-    optimizer:L --> R:test_data_mgr
-    evaluator:L --> R:mlflow
-    evaluator:L --> R:test_data_mgr
-    test_data_mgr:L --> R:baseline
-    test_data_mgr:L --> R:optimizer
-    test_data_mgr:L --> R:evaluator
+    runner --> baseline
+    runner --> optimizer
+    runner --> evaluator
+    runner --> test_data_mgr
+    baseline --> prompt_mgr
+    baseline --> evaluator
+    baseline --> mlflow
+    baseline --> test_data_mgr
+    optimizer --> prompt_mgr
+    optimizer --> evaluator
+    optimizer --> mlflow
+    optimizer --> test_data_mgr
+    evaluator --> mlflow
+    evaluator --> test_data_mgr
+    test_data_mgr --> baseline
+    test_data_mgr --> optimizer
+    test_data_mgr --> evaluator
 ```
 
 ### Three-Step Workflow Data Flow
@@ -168,46 +169,56 @@ sequenceDiagram
 ### Deployment Structure
 
 ```mermaid
-architecture-beta
-    group file_system(disk)[File System Organization]
-    
-    service src(disk)[src/] in file_system
-    service test_harness(disk)[test_harness/] in file_system
-    service experiments(disk)[experiments/] in file_system
-    service test_data(disk)[test_data/] in file_system
-    service prompt_variations(disk)[prompt_variations/] in file_system
-    
-    service main_py(server)[main.py] in src
-    service multi_agent(server)[multi_agent_system.py] in src
-    service production_prompts(disk)[prompts/] in src
-    
-    service optimization_runner(server)[optimization_runner.py] in test_harness
-    service baseline_evaluator(server)[baseline_evaluator.py] in test_harness
-    service optuna_optimizer(server)[optuna_optimizer.py] in test_harness
-    service prompt_manager(server)[prompt_manager.py] in test_harness
-    service test_data_manager(server)[test_data_manager.py] in test_harness
-    service evaluation_engine(server)[evaluation_engine.py] in test_harness
-    service mlflow_integration(server)[mlflow_integration.py] in test_harness
-    
-    service exp_001(disk)[exp_001/] in experiments
-    service exp_002(disk)[exp_002/] in experiments
-    service baseline_prompts(disk)[baseline_prompts/] in exp_001
-    service optimized_prompts(disk)[optimized_prompts/] in exp_001
-    service logs(disk)[logs/] in exp_001
-    
-    service optimization_data(disk)[optimization/] in test_data
-    service evaluation_data(disk)[evaluation/] in test_data
-    service versions_json(disk)[versions.json] in test_data
-    service v1_0_0(disk)[v1.0.0/] in optimization_data
-    service v1_1_0(disk)[v1.1.0/] in optimization_data
-    
-    service planner_variants(disk)[planner/] in prompt_variations
-    service researcher_variants(disk)[researcher/] in prompt_variations
-    service expert_variants(disk)[expert/] in prompt_variations
-    service critic_planner_variants(disk)[critic_planner/] in prompt_variations
-    service critic_researcher_variants(disk)[critic_researcher/] in prompt_variations
-    service critic_expert_variants(disk)[critic_expert/] in prompt_variations
-    service finalizer_variants(disk)[finalizer/] in prompt_variations
+graph TB
+    subgraph FileSystem["File System Organization"]
+        subgraph Src["src/"]
+            main_py[main.py]
+            multi_agent[multi_agent_system.py]
+            production_prompts[prompts/]
+        end
+        
+        subgraph TestHarness["test_harness/"]
+            optimization_runner[optimization_runner.py]
+            baseline_evaluator[baseline_evaluator.py]
+            optuna_optimizer[optuna_optimizer.py]
+            prompt_manager[prompt_manager.py]
+            test_data_manager[test_data_manager.py]
+            evaluation_engine[evaluation_engine.py]
+            mlflow_integration[mlflow_integration.py]
+        end
+        
+        subgraph Experiments["experiments/"]
+            exp_001[exp_001/]
+            exp_002[exp_002/]
+            
+            subgraph Exp001["exp_001/"]
+                baseline_prompts[baseline_prompts/]
+                optimized_prompts[optimized_prompts/]
+                logs[logs/]
+            end
+        end
+        
+        subgraph TestData["test_data/"]
+            optimization_data[optimization/]
+            evaluation_data[evaluation/]
+            versions_json[versions.json]
+            
+            subgraph OptimizationData["optimization/"]
+                v1_0_0[v1.0.0/]
+                v1_1_0[v1.1.0/]
+            end
+        end
+        
+        subgraph PromptVariations["prompt_variations/"]
+            planner_variants[planner/]
+            researcher_variants[researcher/]
+            expert_variants[expert/]
+            critic_planner_variants[critic_planner/]
+            critic_researcher_variants[critic_researcher/]
+            critic_expert_variants[critic_expert/]
+            finalizer_variants[finalizer/]
+        end
+    end
 ```
 
 ## Architectural Scope and Limitations

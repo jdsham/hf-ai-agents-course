@@ -3,6 +3,213 @@
 ## Overview
 This document describes the architecture of the test harness system for optimizing prompts in a LangGraph multi-agent system. The architecture follows a modular design with clear separation between the test harness and production systems.
 
+## Architecture Diagrams
+
+### System Context Diagram
+
+```mermaid
+architecture-beta
+    group production(cloud)[Production System]
+    group test_harness(cloud)[Test Harness System]
+    group external(cloud)[External Systems]
+    
+    service main(server)[main.py] in production
+    service multi_agent(server)[multi_agent_system.py] in production
+    service prompts(disk)[Production Prompts] in production
+    
+    service optimizer(server)[optimization_runner.py] in test_harness
+    service baseline(server)[baseline_evaluator.py] in test_harness
+    service optuna(server)[optuna_optimizer.py] in test_harness
+    service prompt_mgr(server)[prompt_manager.py] in test_harness
+    service test_data_mgr(server)[test_data_manager.py] in test_harness
+    service evaluator(server)[evaluation_engine.py] in test_harness
+    service mlflow(server)[mlflow_integration.py] in test_harness
+    
+    service prompt_variations(disk)[Prompt Variations] in test_harness
+    service experiments(disk)[Experiments] in test_harness
+    service test_data(disk)[Test Data] in test_harness
+    
+    service langgraph(server)[LangGraph System] in external
+    service promptfoo(server)[Promptfoo] in external
+    service mlflow_server(server)[MLflow Server] in external
+    
+    main:L --> R:multi_agent
+    multi_agent:L --> R:prompts
+    
+    optimizer:L --> R:baseline
+    optimizer:L --> R:optuna
+    optimizer:L --> R:evaluator
+    optimizer:L --> R:test_data_mgr
+    baseline:L --> R:prompt_mgr
+    baseline:L --> R:evaluator
+    baseline:L --> R:mlflow
+    optuna:L --> R:prompt_mgr
+    optuna:L --> R:evaluator
+    optuna:L --> R:mlflow
+    evaluator:L --> R:mlflow
+    test_data_mgr:L --> R:baseline
+    test_data_mgr:L --> R:optuna
+    test_data_mgr:L --> R:evaluator
+    prompt_mgr:L --> R:langgraph
+    evaluator:L --> R:langgraph
+    evaluator:L --> R:promptfoo
+    mlflow:L --> R:mlflow_server
+```
+
+### Component Architecture Diagram
+
+```mermaid
+architecture-beta
+    group test_harness(cloud)[Test Harness System]
+    
+    service runner(server)[Optimization Runner] in test_harness
+    service baseline(server)[Baseline Evaluator] in test_harness
+    service optimizer(server)[Optuna Optimizer] in test_harness
+    service prompt_mgr(server)[Prompt Manager] in test_harness
+    service test_data_mgr(server)[Test Data Manager] in test_harness
+    service evaluator(server)[Evaluation Engine] in test_harness
+    service mlflow(server)[MLflow Integration] in test_harness
+    
+    runner:T --> B:baseline
+    runner:T --> B:optimizer
+    runner:T --> B:evaluator
+    runner:T --> B:test_data_mgr
+    baseline:L --> R:prompt_mgr
+    baseline:L --> R:evaluator
+    baseline:L --> R:mlflow
+    baseline:L --> R:test_data_mgr
+    optimizer:L --> R:prompt_mgr
+    optimizer:L --> R:evaluator
+    optimizer:L --> R:mlflow
+    optimizer:L --> R:test_data_mgr
+    evaluator:L --> R:mlflow
+    evaluator:L --> R:test_data_mgr
+    test_data_mgr:L --> R:baseline
+    test_data_mgr:L --> R:optimizer
+    test_data_mgr:L --> R:evaluator
+```
+
+### Three-Step Workflow Data Flow
+
+```mermaid
+flowchart TD
+    A[Start Experiment] --> B[Step 1: Baseline Evaluation]
+    B --> C[Load Optimization Test Data]
+    C --> D[Copy Production Prompts]
+    D --> E[Evaluate Baseline Performance]
+    E --> F[Log Baseline Results]
+    F --> G[Step 2: Optimization]
+    G --> H[Load Optimization Test Data]
+    H --> I[Configure Optuna Study]
+    I --> J[Enqueue Baseline Trial]
+    J --> K[Optimization Loop]
+    K --> L[Generate Trial Parameters]
+    L --> M[Convert to Prompts]
+    M --> N[Inject into System]
+    N --> O[Evaluate with Promptfoo]
+    O --> P[Report Metrics to Optuna]
+    P --> Q{More Trials?}
+    Q -->|Yes| K
+    Q -->|No| R[Select Best Trial]
+    R --> S[Save Optimized Prompts]
+    S --> T[Step 3: Final Evaluation]
+    T --> U[Load Evaluation Test Data]
+    U --> V[Load Best Prompts]
+    V --> W[Evaluate on Test Set]
+    W --> X[Log Final Results]
+    X --> Y[End Experiment]
+    
+    style A fill:#e1f5fe
+    style Y fill:#e8f5e8
+    style B fill:#fff3e0
+    style G fill:#fff3e0
+    style T fill:#fff3e0
+```
+
+### Optimization Trial Sequence
+
+```mermaid
+sequenceDiagram
+    participant OR as Optimization Runner
+    participant OO as Optuna Optimizer
+    participant TDM as Test Data Manager
+    participant PM as Prompt Manager
+    participant EE as Evaluation Engine
+    participant MAS as Multi-Agent System
+    participant PF as Promptfoo
+    participant ML as MLflow
+    
+    OR->>TDM: load_test_data(optimization)
+    TDM-->>OR: return_test_cases()
+    OR->>OO: optimize_prompts()
+    OO->>OO: create_study()
+    OO->>OO: enqueue_baseline_trial()
+    
+    loop For each trial
+        OO->>OO: suggest_trial_parameters()
+        OO->>PM: convert_trial_to_prompts()
+        PM->>MAS: inject_prompts_into_system()
+        OO->>EE: evaluate_system()
+        EE->>EE: create_promptfoo_config()
+        EE->>MAS: execute_test_cases()
+        MAS-->>EE: return_answers()
+        EE->>PF: evaluate_with_promptfoo()
+        PF-->>EE: return_metrics()
+        EE->>EE: process_promptfoo_results()
+        EE-->>OO: return_evaluation_results()
+        OO->>ML: log_trial_results()
+    end
+    
+    OO->>OO: select_best_trial()
+    OO->>PM: save_optimized_prompts()
+    OO-->>OR: return_optimization_result()
+```
+
+### Deployment Structure
+
+```mermaid
+architecture-beta
+    group file_system(disk)[File System Organization]
+    
+    service src(disk)[src/] in file_system
+    service test_harness(disk)[test_harness/] in file_system
+    service experiments(disk)[experiments/] in file_system
+    service test_data(disk)[test_data/] in file_system
+    service prompt_variations(disk)[prompt_variations/] in file_system
+    
+    service main_py(server)[main.py] in src
+    service multi_agent(server)[multi_agent_system.py] in src
+    service production_prompts(disk)[prompts/] in src
+    
+    service optimization_runner(server)[optimization_runner.py] in test_harness
+    service baseline_evaluator(server)[baseline_evaluator.py] in test_harness
+    service optuna_optimizer(server)[optuna_optimizer.py] in test_harness
+    service prompt_manager(server)[prompt_manager.py] in test_harness
+    service test_data_manager(server)[test_data_manager.py] in test_harness
+    service evaluation_engine(server)[evaluation_engine.py] in test_harness
+    service mlflow_integration(server)[mlflow_integration.py] in test_harness
+    
+    service exp_001(disk)[exp_001/] in experiments
+    service exp_002(disk)[exp_002/] in experiments
+    service baseline_prompts(disk)[baseline_prompts/] in exp_001
+    service optimized_prompts(disk)[optimized_prompts/] in exp_001
+    service logs(disk)[logs/] in exp_001
+    
+    service optimization_data(disk)[optimization/] in test_data
+    service evaluation_data(disk)[evaluation/] in test_data
+    service versions_json(disk)[versions.json] in test_data
+    service v1_0_0(disk)[v1.0.0/] in optimization_data
+    service v1_1_0(disk)[v1.1.0/] in optimization_data
+    
+    service planner_variants(disk)[planner/] in prompt_variations
+    service researcher_variants(disk)[researcher/] in prompt_variations
+    service expert_variants(disk)[expert/] in prompt_variations
+    service critic_planner_variants(disk)[critic_planner/] in prompt_variations
+    service critic_researcher_variants(disk)[critic_researcher/] in prompt_variations
+    service critic_expert_variants(disk)[critic_expert/] in prompt_variations
+    service finalizer_variants(disk)[finalizer/] in prompt_variations
+```
+
 ## Architectural Scope and Limitations
 
 This architecture document focuses on the **research and development aspects** of the test harness system. The following production system concerns are intentionally excluded from architectural consideration:
@@ -584,6 +791,14 @@ test_harness/
 - **No Retry**: Failures stop execution, no automatic recovery
 - **Local Logs**: All logs stored within experiment directories
 
+### 6. **Testing Strategy**
+- **Unit Testing**: Each component must have comprehensive unit tests
+- **Integration Testing**: Test component interactions and data flow
+- **End-to-End Testing**: Test complete three-step workflow
+- **Test Data Management**: Use versioned test data for consistent testing
+- **Mocking Strategy**: Mock external dependencies (LangGraph, MLflow, Promptfoo)
+- **Test Coverage**: Aim for 80%+ code coverage for critical components
+
 ## Quality Attributes
 
 ### Performance
@@ -605,6 +820,64 @@ test_harness/
 - **CLI Interface**: Simple command-line interface for running experiments
 - **Progress Feedback**: Clear progress indicators during optimization
 - **Error Messages**: Actionable error messages with context
+
+## Quality Requirements
+
+### Quality Goals
+
+The test harness prioritizes three key quality attributes that are essential for its research and development purpose:
+
+1. **Reliability**: The system must handle failures gracefully with complete error context for debugging
+2. **Usability**: The system must provide clear, actionable feedback to users during experiments  
+3. **Maintainability**: The system must support easy debugging and modification of experiments
+
+### Quality Tree
+
+```
+Test Harness Quality
+├── Reliability
+│   └── Fail-fast with complete error context
+├── Usability
+│   └── Clear progress feedback and error messages
+└── Maintainability
+    └── Comprehensive logging and modular design
+```
+
+### Quality Scenarios
+
+#### **Reliability Scenario: Prompt Evaluation Failure**
+**Stimulus**: Promptfoo evaluation fails during an Optuna trial
+**Environment**: Optimization phase with 50+ trials
+**Response**: System halts immediately, logs trial parameters, prompts used, and complete error stack
+**Response Measure**: Zero corrupted results, complete debugging context preserved
+
+#### **Usability Scenario: Long-Running Optimization**
+**Stimulus**: User starts 200-trial optimization experiment
+**Environment**: Normal optimization execution
+**Response**: CLI shows "Trial 45/200, Best Score: 0.85, ETA: 2 hours"
+**Response Measure**: User always knows progress and can estimate completion time
+
+#### **Maintainability Scenario: Trial Analysis**
+**Stimulus**: Researcher needs to understand why trial #67 performed poorly
+**Environment**: Post-experiment analysis
+**Response**: Complete trial data available: prompts, parameters, evaluation results, logs
+**Response Measure**: Researcher can reproduce and analyze any trial within 3 minutes
+
+### Quality Trade-offs
+
+The test harness makes the following quality trade-offs to maintain simplicity:
+
+- **Performance vs Reliability**: Prioritizes complete error context over execution speed
+- **Convenience vs Control**: Requires manual intervention for failures rather than automatic recovery
+- **Simplicity vs Features**: Focuses on core functionality over advanced features
+
+### Quality Validation
+
+Quality requirements are validated through:
+
+1. **Reliability**: Fail-fast testing with various failure scenarios
+2. **Usability**: CLI usability testing with different user types
+3. **Maintainability**: Code review and logging completeness verification
 
 ## Architecture Decisions
 

@@ -121,13 +121,20 @@ The system must answer GAIA Level 1 questions efficiently and reliably. GAIA Lev
 - **REQ-068**: The system shall maintain comprehensive logging of system operations, agent interactions, and question processing activities for observability and debugging purposes
 
 ### Retry Mechanism
-- **REQ-069**: The system shall implement a configurable retry mechanism for quality improvement including tracking retry attempts for each task, using improved approaches based on critic feedback, maintaining retry attempt history for analysis, providing clear indication when retry limits are reached, and returning "The question could not be answered." when the retry limit is exceeded
+- **REQ-069**: The system shall implement agent-specific retry mechanisms for quality improvement including:
+  - Individual retry counters for planner, researcher, and expert agents
+  - Agent-specific retry limits configurable through system configuration with role-based default values (planner: 2-3, researcher: 5-7, expert: 4-6)
+  - Independent retry limit enforcement for each agent type, allowing one agent to fail without affecting the retry limits of other agents
+  - Agent-specific failure attribution in reasoning trace when retry limits are exceeded
+  - Clear indication of which specific agent failed when retry limits are reached
+  - Return "The question could not be answered due to [agent_type] failures." with detailed failure information in reasoning trace
+  - Exclusion of critic and finalizer agents from retry mechanisms, as they do not require retry functionality
 
 ## 7. Output and Interface
 
 ### Answer Format and Structure
 - **REQ-071**: The system shall return answers in JSON format with final_answer and reasoning_trace fields, ensuring complete answers and comprehensive reasoning traces
-- **REQ-072**: The system shall return "The question could not be answered." when retry limit is exceeded
+- **REQ-072**: The system shall return "The question could not be answered due to [agent_type] failures." when any agent's retry limit is exceeded, with specific failure attribution in the reasoning trace
 
 ### Entry Point Script Requirements
 - **REQ-073**: The system shall process GAIA Level 1 questions in batch mode from an input JSONL file, loading all questions at runtime, processing each question sequentially, handling the complete set without manual intervention, and assuming pre-validated input
@@ -136,8 +143,8 @@ The system must answer GAIA Level 1 questions efficiently and reliably. GAIA Lev
 ## 8. System Configuration
 
 ### Configuration Management
-- **REQ-075**: The system shall support flexible configuration of model settings and runtime parameters
-- **REQ-076**: The system shall provide default configuration values when no configuration is specified and validate configuration parameters before use
+- **REQ-075**: The system shall support flexible configuration of model settings and runtime parameters including agent-specific retry limits for planner, researcher, and expert agents
+- **REQ-076**: The system shall provide default configuration values when no configuration is specified and validate configuration parameters before use, including validation of agent-specific retry limit configurations
 
 ## 9. Non-Functional Requirements
 

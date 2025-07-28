@@ -69,8 +69,8 @@ The system answers GAIA Level 1 questions through a coordinated workflow of spec
 
 **Key Architecture Patterns:**
 - **Graph-Based Workflow**: Uses LangGraph for orchestration with nodes representing agents
-- **ReAct Pattern**: Agents use reasoning and action loops for complex problem solving
-- **Subgraph Modularity**: Complex agents (Researcher, Expert) use subgraphs for tool interaction
+- **ReAct Pattern**: Iterative reasoning and action loops for complex problem solving
+- **Modular Agent Architecture**: Hierarchical workflow components for complex agent logic isolation
 - **Message Passing**: Structured communication between agents through the orchestrator
 - **Factory Pattern**: Dynamic agent creation with injected configuration and prompts
 
@@ -207,8 +207,8 @@ The system uses **graph-based workflow orchestration** with **multi-agent coordi
 - **Conditional Routing**: State-driven execution with critic-based quality control
 
 **Core Patterns:**
-- **ReAct Pattern**: Reasoning and Acting agents for tool-using capabilities
-- **Subgraph Modularity**: Complex agent logic isolation in Researcher and Expert subgraphs
+- **ReAct Pattern**: Iterative reasoning and action loops for complex problem solving
+- **Modular Agent Architecture**: Hierarchical workflow components for complex agent logic isolation
 - **Message Passing**: Inter-agent communication through structured messages
 - **Factory Pattern**: Dynamic agent creation with injected configuration
 - **Orchestrator Pattern**: Centralized workflow control with state machine logic
@@ -226,7 +226,7 @@ The system uses **graph-based workflow orchestration** with **multi-agent coordi
 - **API Integration**: REST APIs for external services with rate limiting and error handling
 - **Tool Framework**: LangChain tool framework for safe tool execution
 - **Configuration Management**: Environment variables for API keys and settings
-- **Error Handling**: Comprehensive error handling with retry logic and graceful degradation
+- **Error Handling**: Comprehensive error handling with retry logic and fail-fast termination
 
 **Required Diagrams**: None (covered by System Context Diagram in 1.3)
 
@@ -302,16 +302,16 @@ The multi-agent system employs five core design patterns that work together to c
 - **Usage**: Orchestrator determines next execution step based on current state and critic decisions
 
 **ReAct Pattern:**
-- **Purpose**: Reasoning and Acting agents for tool-using capabilities
+- **Purpose**: Iterative reasoning and action loops for complex problem solving
 - **Implementation**: Agents use iterative reasoning and action loops for complex problem solving
 - **Benefits**: Enables complex reasoning, tool interaction, and multi-step problem solving
 - **Usage**: Researcher and Expert agents use ReAct pattern for information gathering and reasoning
 
-**Subgraph Pattern:**
-- **Purpose**: Modular workflow components for complex agent logic
-- **Implementation**: Complex agents (Researcher, Expert) use subgraphs for tool interaction and state management
-- **Benefits**: Isolates complex logic, enables modular design, and supports tool integration
-- **Usage**: Researcher and Expert agents use subgraphs for multi-step tool interaction
+**Modular Agent Architecture:**
+- **Purpose**: Isolate complex agent logic for maintainability and reusability
+- **Implementation**: Hierarchical workflow components with specialized capabilities
+- **Benefits**: Clear separation of concerns, independent tool integration, modular testing
+- **Usage**: Complex agents require specialized workflow components for sophisticated reasoning and tool interaction
 
 **Message Passing Pattern:**
 - **Purpose**: Inter-agent communication through structured messages
@@ -343,8 +343,8 @@ The system architecture is based on several key decisions that balance simplicit
 - **Alternative Considered**: Single critic agent for all quality control
 - **Rejection Reason**: Would not provide agent-specific feedback and quality assessment
 
-**Subgraph Modularity vs. Monolithic Agents:**
-- **Decision**: Subgraph modularity for complex agent logic
+**Modular Agent Architecture vs. Monolithic Agents:**
+- **Decision**: Modular agent architecture for complex agent logic
 - **Rationale**: Enables complex agent logic isolation and reusability
 - **Alternative Considered**: Monolithic agents with embedded tool logic
 - **Rejection Reason**: Would make agents harder to maintain and test
@@ -364,9 +364,10 @@ The system architecture is designed to achieve specific quality attributes that 
 **Reliability:**
 - **Error Handling**: Comprehensive error handling with agent-specific retry logic
 - **Critic Agents**: Quality control through specialized critic agents at each workflow step
-- **Graceful Degradation**: System continues operation even when individual components fail
+- **Fail-Fast Error Handling**: System terminates immediately when critical errors occur
+- **Graceful Retry Failure**: System returns failure message when retry limits are exceeded
 - **State Validation**: Runtime state integrity checks and validation
-- **Retry Logic**: Configurable retry limits for each agent type with exponential backoff
+- **Retry Logic**: Configurable retry limits for each agent type with graceful failure when limits exceeded
 
 **Maintainability:**
 - **Modular Design**: Clear separation of concerns with specialized agent components
@@ -393,7 +394,7 @@ The system architecture is designed to achieve specific quality attributes that 
 - **Graph-Based Execution**: Efficient workflow orchestration through LangGraph
 - **State Management**: Optimized state transitions and memory management
 - **Tool Optimization**: Efficient tool selection and execution patterns
-- **Parallel Processing**: Subgraph architecture enables parallel tool execution
+- **Sequential Execution**: Sequential processing ensures API rate limit compliance
 - **Resource Management**: Proper cleanup and resource management
 
 **Required Diagrams**: None (text-based section)
@@ -403,17 +404,17 @@ The system architecture is designed to achieve specific quality attributes that 
 The multi-agent system is built as a directed graph using LangGraph, with nodes representing agents and workflow components, and edges representing workflow transitions and data flow.
 
 **High-Level Architecture:**
-The system consists of a main graph with specialized subgraphs for complex agent logic:
+The system consists of a main graph with specialized modular components for complex agent logic:
 - **Main Graph**: Contains orchestrator, planner, critic agents, and finalizer
-- **Researcher Subgraph**: Handles information gathering with tool interaction
-- **Expert Subgraph**: Manages reasoning and calculation with tool interaction
+- **Modular Research Components**: Handles information gathering with tool interaction
+- **Modular Expert Components**: Manages reasoning and calculation with tool interaction
 
 **Graph Structure:**
 - **Orchestrator Node**: Central control node that manages workflow execution and state transitions
 - **Agent Nodes**: Planner, Researcher, Expert agents with specialized capabilities
 - **Critic Nodes**: Quality control agents for planner, researcher, and expert outputs
 - **Finalizer Node**: Produces final answer and reasoning trace
-- **Subgraph Nodes**: Researcher and Expert subgraphs for complex tool interaction
+- **Modular Components**: Research and Expert modular components for complex tool interaction
 
 **Workflow Patterns:**
 - **State-Driven Execution**: Workflow progression based on current state and critic decisions
@@ -499,10 +500,10 @@ graph TB
 **Section Summary**: This section covers the fundamental architecture principles and patterns that form the foundation of the multi-agent system, providing the conceptual framework for understanding all subsequent sections.
 
 **Key Takeaways**:
-- 5 core design patterns (Factory, Orchestrator, ReAct, Subgraph, Message Passing) work together to create a robust architecture
+- 5 core design patterns (Factory, Orchestrator, ReAct, Modular Agent Architecture, Message Passing) work together to create a robust architecture
 - Key architectural decisions balance simplicity, maintainability, and functionality with clear rationale for each choice
 - Quality attributes (reliability, maintainability, extensibility, testability, performance) are achieved through specific architectural mechanisms
-- Graph-based architecture with subgraph modularity enables complex workflow orchestration and tool integration
+- Graph-based architecture with modular agent architecture enables complex workflow orchestration and tool integration
 
 ---
 
@@ -592,25 +593,25 @@ Each agent in the multi-agent system has specialized capabilities and responsibi
 **Researcher Agent:**
 - **Purpose**: Gathers information using external tools
 - **Responsibilities**:
-  - Information gathering with tools and subgraph integration
+  - Information gathering with tools and modular component integration
   - ReAct pattern implementation for iterative reasoning
   - Multi-step research coordination and result synthesis
   - Tool selection and usage optimization
   - Research result validation and quality assessment
 - **Tools**: Web search, Wikipedia, YouTube transcripts, file readers, MCP tools
-- **Subgraph**: Uses LangGraph subgraph for tool interaction
+- **Modular Component**: Uses modular component architecture for tool interaction
 - **Function**: Receives research requests, functions as ReAct agent, makes multiple tool calls, processes multiple research steps sequentially
 
 **Expert Agent:**
 - **Purpose**: Synthesizes final answer using gathered information
 - **Responsibilities**:
-  - Reasoning and calculations with subgraph integration
+  - Reasoning and calculations with modular component integration
   - ReAct pattern implementation for complex problem solving
   - Research result integration and answer synthesis
   - Mathematical and logical reasoning capabilities
   - Expert step execution and result validation
 - **Tools**: Calculator, unit converter, Python REPL
-- **Subgraph**: Uses LangGraph subgraph for tool interaction
+- **Modular Component**: Uses modular component architecture for tool interaction
 - **Function**: Receives logical instructions, has required context provided, functions as ReAct agent with multi-step reasoning
 
 **Critic Agent:**
@@ -645,7 +646,7 @@ The orchestrator is the central controller that manages the entire workflow exec
 The orchestrator implements a state machine that manages workflow execution:
 - **State Management**: Maintains current workflow state and determines next execution steps
 - **Agent Coordination**: Routes messages to appropriate agents based on workflow state
-- **Error Handling**: Manages retry logic and graceful degradation when agents fail
+- **Error Handling**: Manages retry logic and fail-fast termination when agents fail
 - **Quality Control**: Coordinates critic feedback integration at each workflow step
 
 **Step Determination and Routing Logic:**
@@ -668,7 +669,7 @@ The workflow consists of 8 distinct steps with specific transitions:
 
 **Research Step Execution Pattern:**
 The research phase follows a specific sequential execution pattern:
-- **Sequential Processing**: Research steps are executed one at a time, not in parallel
+- **Sequential Research Execution**: Research steps are executed one at a time, not in parallel, to respect API rate limits
 - **Step-by-Step Evaluation**: Each research step receives individual critic evaluation
 - **State Isolation**: Each research step uses unique step_id (0, 1, 2, etc.) for state isolation
 - **Message Routing**: Messages are filtered by step_id to route to correct research step
@@ -687,8 +688,8 @@ The orchestrator implements specific execution patterns:
 - **Sequential Execution**: Steps are executed in a predetermined sequence
 - **Conditional Routing**: Critic decisions determine whether to proceed or retry
 - **Retry Logic**: Failed steps are retried up to configurable limits
-- **Graceful Degradation**: System continues to finalizer even when retry limits are exceeded
-- **Sequential Research Execution**: Research steps are executed one at a time, not in parallel
+- **Graceful Retry Failure**: System returns failure message when retry limits are exceeded
+- **Sequential Research Execution**: Research steps are executed one at a time, not in parallel, to respect API rate limits
 - **Step-by-Step Research Process**: For each research step: Researcher Agent executes → Critic Agent evaluates → If approved, move to next step; if rejected, retry current step
 - **Research Step Isolation**: Each research step uses unique step_id (0, 1, 2, etc.) for state isolation and message routing
 - **Individual Critic Evaluation**: Each research step receives individual critic evaluation before proceeding to the next step
@@ -1011,7 +1012,7 @@ The system integrates with OpenAI's large language models to provide reasoning, 
 - **Fallback Mechanisms**: System gracefully handles LLM failures and invalid responses
 
 **Rate Limiting and API Management:**
-- **Rate Limit Handling**: Automatic rate limit detection and exponential backoff
+- **Rate Limit Handling**: Automatic rate limit detection and immediate failure when limits exceeded
 - **API Key Management**: Secure management of OpenAI API keys through environment variables
 - **Request Optimization**: Efficient API usage with appropriate request batching
 - **Error Handling**: Comprehensive error handling for API failures and network issues
@@ -1154,8 +1155,7 @@ Tools are categorized based on their purpose and usage patterns:
 - **Rate Limiting**: Automatic rate limiting for external API tools
 
 **Tool Error Handling and Fallback Mechanisms:**
-- **Graceful Degradation**: System continues operation when individual tools fail
-- **Retry Logic**: Automatic retry with exponential backoff for transient failures
+- **Fail-Fast Termination**: System terminates immediately when individual tools fail
 - **Alternative Tools**: Fallback to alternative tools when primary tools are unavailable
 - **Error Reporting**: Detailed error reporting for tool failures and debugging
 - **Resource Cleanup**: Proper cleanup of tool resources and connections
@@ -1334,7 +1334,7 @@ The system implements specific patterns for state isolation and sharing:
 **State Ownership and Access Patterns:**
 Clear ownership and access patterns ensure state integrity:
 - **Main Graph Ownership**: Main graph owns all state and controls access
-- **Subgraph Ownership**: Subgraphs own their internal state and conversation context
+- **Modular Component Ownership**: Modular components own their internal state and conversation context
 - **Orchestrator Access**: Orchestrator has access to all state for coordination
 - **Agent Access**: Agents access only their relevant state portions
 - **Validation**: All state access is validated to ensure integrity
@@ -1353,7 +1353,7 @@ The GraphState contains the following fields:
 - **retry_limit**: Maximum retry limit
 - **agent_messages**: List of inter-agent messages
 - **researcher_states**: Dictionary of research step states
-- **expert_state**: Expert subgraph state
+- **expert_state**: Expert modular component state
 - **error**: Error message if any
 - **error_component**: Component that failed
 
@@ -1370,7 +1370,7 @@ State fields have specific relationships and dependencies:
 - **Workflow Dependencies**: current_step determines which agent is active
 - **Data Dependencies**: research_results depend on research_steps execution
 - **Communication Dependencies**: agent_messages depend on workflow progression
-- **Subgraph Dependencies**: subgraph states depend on main graph workflow state
+- **Modular Component Dependencies**: modular component states depend on main graph workflow state
 - **Error Dependencies**: error state depends on component execution results
 
 **Required Diagrams**: None (covered by Data Architecture Diagram in 5.1)
@@ -1401,7 +1401,7 @@ Retry logic is managed through specific state update patterns:
 - **Agent-Specific Limits**: Different agents have different retry limits (planner: 2-3, researcher: 5-7, expert: 4-6)
 - **Retry State Tracking**: Current retry count is tracked in state for each agent
 - **Limit Enforcement**: Retry limits are enforced through state validation
-- **Graceful Degradation**: System proceeds to finalizer when retry limits are exceeded
+- **Graceful Retry Failure**: System returns failure message when retry limits are exceeded
 
 **State Integrity Checks and Error Handling:**
 State integrity is maintained through comprehensive checks:
@@ -1747,7 +1747,8 @@ The system implements a robust error handling architecture to ensure reliability
 - **Centralized Error Management:** The orchestrator coordinates error detection, propagation, and recovery across all agents and workflow steps.
 - **Error Categorization:** Errors are classified as API errors, validation errors, runtime errors, or tool-specific errors.
 - **Error Propagation:** Errors are propagated through the workflow state and communicated to relevant agents and the finalizer.
-- **Graceful Degradation:** When errors cannot be resolved, the system degrades gracefully, providing partial results and clear failure reasons.
+- **Fail-Fast Error Handling:** When critical errors occur, the system terminates immediately with clear failure reasons.
+- **Graceful Retry Failure:** When retry limits are exceeded, the system returns a graceful failure message with specific agent attribution.
 
 **Error Detection and Reporting:**
 - **Validation Errors:** Detected during state updates, configuration loading, and prompt injection.
@@ -1781,7 +1782,8 @@ graph TB
         subgraph "Error Handling"
             ErrorDetect[Error Detection]
             RetryLogic[Retry Logic]
-            GracefulDegrade[Graceful Degradation]
+            FailFast[Fail-Fast Error Handling]
+            GracefulFail[Graceful Retry Failure]
         end
     end
     
@@ -1799,7 +1801,8 @@ graph TB
     RetryLogic --> E
     
     ErrorDetect --> RetryLogic
-    RetryLogic --> GracefulDegrade
+    RetryLogic --> FailFast
+    RetryLogic --> GracefulFail
     
     classDef agent fill:#e3f2fd
     classDef critic fill:#f3e5f5
@@ -1807,7 +1810,7 @@ graph TB
     
     class P,R,E agent
     class C,Decision,Feedback critic
-    class ErrorDetect,RetryLogic,GracefulDegrade error
+    class ErrorDetect,RetryLogic,FailFast,GracefulFail error
 ```
 
 ### 7.2 Agent-Specific Retry Logic
@@ -1824,8 +1827,8 @@ The system uses agent-specific retry logic to improve robustness and quality, wh
 - **Limit Enforcement:** When retry limits are reached, the system proceeds to the finalizer with failure attribution.
 
 **Retry Patterns:**
-- **Exponential Backoff:** Optional backoff strategies for repeated failures.
-- **Graceful Degradation:** If retries are exhausted, the system provides the best available answer and clear failure reasons.
+- **Immediate Retry:** Simple retry without delays for repeated failures.
+- **Graceful Retry Failure:** If retries are exhausted, the system returns a graceful failure message with specific agent attribution.
 
 **Required Diagrams**: 
 - **Retry Logic Architecture Diagram** - Agent-specific retry configuration and management
@@ -1854,7 +1857,7 @@ graph TB
             Increment[Increment Counter]
             CheckLimit[Check Limit]
             Retry[Retry Action]
-            Degrade[Graceful Degradation]
+            GracefulFail[Graceful Retry Failure]
         end
     end
     
@@ -1868,7 +1871,7 @@ graph TB
     CheckLimit --> RetryLimit
     
     CheckLimit -->|Under Limit| Retry
-    CheckLimit -->|At Limit| Degrade
+    CheckLimit -->|At Limit| GracefulFail
     
     Retry --> P
     Retry --> R
@@ -1885,7 +1888,7 @@ graph TB
     class P,R,E agent
     class RetryCounter,RetryLimit,RetryState retry
     class Approve,Reject decision
-    class Increment,CheckLimit,Retry,Degrade action
+    class Increment,CheckLimit,Retry,GracefulFail action
 ```
 
 ### 7.3 Quality Control System
@@ -1913,7 +1916,8 @@ Quality assurance is integrated at every workflow step through the critic agent 
 The architecture is designed for resilience, ensuring the system continues to function and provide value even in the presence of errors or partial failures.
 
 **Resilience Strategies:**
-- **Graceful Degradation:** The system provides partial answers and clear failure reasons when full completion is not possible.
+- **Fail-Fast Error Handling:** The system terminates immediately when critical errors occur.
+- **Graceful Retry Failure:** The system returns a graceful failure message when retry limits are exceeded.
 - **Error Recovery:** State repair and retry mechanisms attempt to recover from transient and recoverable errors.
 - **Fault Tolerance:** The workflow is robust to individual agent or tool failures, isolating failures and preventing system-wide crashes.
 - **Monitoring and Alerting:** Errors and failures are logged and can trigger alerts for operational monitoring.
@@ -1952,7 +1956,7 @@ Testing is a first-class concern, with architecture designed for testability at 
 This section covers the error handling, retry logic, quality assurance, system resilience, and testing strategies of the multi-agent system, describing how the system maintains reliability, quality, and robustness in the face of errors and failures.
 
 **Key Takeaways:**
-- Comprehensive error handling and retry logic ensure system reliability and graceful degradation
+- Comprehensive error handling and retry logic ensure system reliability with fail-fast error handling and graceful retry failures
 - Critic agent and feedback loops provide integrated quality control at every workflow step
 - System resilience strategies enable robust operation and clear failure attribution
 - Testing strategies and infrastructure support maintainable, high-quality code and architecture
@@ -1980,9 +1984,11 @@ The architecture is shaped by several foundational design decisions, each made t
 - Implemented a single critic agent with dynamic prompts for each workflow step, balancing quality control and system simplicity.
 - Multiple critics were considered but added unnecessary complexity.
 
-**Subgraph Modularity vs. Monolithic Agents:**
-- Used subgraph modularity for complex agents (Researcher, Expert) to isolate logic and enable independent tool integration.
-- Monolithic agents were rejected to avoid tightly coupled logic and reduced maintainability.
+**Modular Agent Architecture vs. Monolithic Agents:**
+- **Decision**: Modular agent architecture for complex agent logic
+- **Rationale**: Enables complex agent logic isolation and reusability
+- **Alternative Considered**: Monolithic agents with embedded tool logic
+- **Rejection Reason**: Would make agents harder to maintain and test
 
 **Hard-Coded Workflow vs. Dynamic Workflow:**
 - Chose a hard-coded workflow for predictability, easier debugging, and clear state transitions.
@@ -2031,7 +2037,7 @@ The architecture reflects conscious trade-offs to balance system goals, with ide
 - **API Dependency:** Reliance on external APIs (LLMs, search) mitigated by error handling and fallback strategies.
 - **LLM Limitations:** Prompt engineering and critic feedback loops help address LLM unpredictability.
 - **Configuration Errors:** Pydantic validation and clear error reporting reduce misconfiguration risk.
-- **Tool Failures:** Graceful degradation and retry logic ensure system resilience.
+- **Tool Failures:** Fail-fast termination and retry logic ensure system resilience.
 
 **Required Diagrams**: None (text-based section)
 
@@ -2068,7 +2074,8 @@ The architecture is designed to support future evolution and adaptation as requi
 - **Prompt:** Instructional text injected into agents to guide LLM behavior.
 - **Tool:** External capability (API, function, script) used by agents to perform tasks.
 - **Retry Logic:** Mechanism for re-attempting failed agent actions up to a configured limit.
-- **Graceful Degradation:** System behavior that provides partial results and clear failure reasons when full completion is not possible.
+- **Fail-Fast Termination:** System behavior that terminates immediately with clear failure reasons when critical errors occur.
+- **Graceful Retry Failure:** System behavior that returns a graceful failure message with specific agent attribution when retry limits are exceeded.
 
 **References:**
 - **Source Code:** See project repository for implementation details.
@@ -2119,3 +2126,23 @@ This document contains the following 10 diagrams as specified in the architectur
 10. **Retry Logic Architecture Diagram** (Section 7.2) - Agent-specific retry configuration and management
 
 ---
+
+**Modular Component Integration:**
+- **Research Modular Components**: Handles multi-step research with tool interaction
+- **Expert Modular Components**: Manages complex reasoning with calculation tools
+- **State Synchronization**: Modular component states are synchronized with main graph state
+- **Message Conversion**: Messages are converted between main graph and modular component formats
+
+**Cross-Component Communication:**
+Complex agents use modular components with specific communication patterns:
+- **Main Graph to Modular Component**: Messages are converted between AgentMessage and BaseMessage formats
+- **Modular Component to Main Graph**: Results are extracted and integrated into main workflow state
+- **State Synchronization**: Modular component states are synchronized with main graph state
+- **Message Conversion**: Protocol conversion ensures compatibility between graph types
+
+**Modular Component States Contained Within Main GraphState:**
+Complex agents use modular component states for their internal state management:
+- **ResearchState**: Individual state for each research step with conversation context and tool state
+- **ExpertState**: Single state for expert agent with conversation context and calculation state
+- **State Containment**: Modular component states are contained within the main GraphState
+- **State Isolation**: Each modular component manages its own internal state independently

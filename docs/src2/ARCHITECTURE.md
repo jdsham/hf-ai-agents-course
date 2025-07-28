@@ -404,17 +404,18 @@ The system architecture is designed to achieve specific quality attributes that 
 The multi-agent system is built as a directed graph using LangGraph, with nodes representing agents and workflow components, and edges representing workflow transitions and data flow.
 
 **High-Level Architecture:**
-The system consists of a main graph with specialized modular components for complex agent logic:
-- **Main Graph**: Contains orchestrator, planner, critic agents, and finalizer
-- **Modular Research Components**: Handles information gathering with tool interaction
-- **Modular Expert Components**: Manages reasoning and calculation with tool interaction
+The system consists of a main graph with all agents, where complex agents use modular components for tool interaction:
+- **Main Graph**: Contains orchestrator, planner, researcher, expert, critic agents, and finalizer
+- **Researcher Agent**: Uses modular components for complex tool interaction and state management
+- **Expert Agent**: Uses modular components for complex tool interaction and state management
 
 **Graph Structure:**
 - **Orchestrator Node**: Central control node that manages workflow execution and state transitions
-- **Agent Nodes**: Planner, Researcher, Expert agents with specialized capabilities
+- **Planner Node**: Agent responsible for question analysis and strategy creation
+- **Researcher Node**: Agent responsible for information gathering, uses modular components for tool interaction
+- **Expert Node**: Agent responsible for specialized reasoning and calculations, uses modular components for tool interaction
 - **Critic Nodes**: Quality control agents for planner, researcher, and expert outputs
 - **Finalizer Node**: Produces final answer and reasoning trace
-- **Modular Components**: Research and Expert modular components for complex tool interaction
 
 **Workflow Patterns:**
 - **State-Driven Execution**: Workflow progression based on current state and critic decisions
@@ -445,54 +446,34 @@ graph TB
         Input[Input Interface]
         Orchestrator[Orchestrator]
         Planner[Planner Agent]
-        Critic1[Critic Agent]
-        Finalizer[Finalizer Agent]
-    end
-    
-    subgraph "Researcher Subgraph"
+        Critic[Critic Agent]
         Researcher[Researcher Agent]
-        Critic2[Critic Agent]
-        Tools1[Research Tools]
-    end
-    
-    subgraph "Expert Subgraph"
         Expert[Expert Agent]
-        Critic3[Critic Agent]
-        Tools2[Expert Tools]
+        Finalizer[Finalizer Agent]
     end
     
     Input --> Orchestrator
     Orchestrator --> Planner
-    Planner --> Critic1
-    Critic1 -->|Approve| Orchestrator
-    Critic1 -->|Reject| Planner
+    Planner --> Critic
+    Critic -->|Approve| Orchestrator
+    Critic -->|Reject| Planner
     
     Orchestrator --> Researcher
-    Researcher --> Tools1
-    Tools1 --> Researcher
-    Researcher --> Critic2
-    Critic2 -->|Approve| Orchestrator
-    Critic2 -->|Reject| Researcher
+    Researcher --> Orchestrator
     
     Orchestrator --> Expert
-    Expert --> Tools2
-    Tools2 --> Expert
-    Expert --> Critic3
-    Critic3 -->|Approve| Orchestrator
-    Critic3 -->|Reject| Expert
+    Expert --> Orchestrator
     
     Orchestrator --> Finalizer
     Finalizer --> Input
     
     classDef mainNode fill:#e1f5fe
-    classDef subgraphNode fill:#f3e5f5
-    classDef toolNode fill:#e8f5e8
+    classDef agentNode fill:#f3e5f5
     classDef criticNode fill:#fff3e0
     
-    class Input,Orchestrator,Planner,Finalizer mainNode
-    class Researcher,Expert subgraphNode
-    class Tools1,Tools2 toolNode
-    class Critic1,Critic2,Critic3 criticNode
+    class Input,Orchestrator,Finalizer mainNode
+    class Planner,Researcher,Expert agentNode
+    class Critic criticNode
 ```
 
 **Related Sections**: Sections 3, 4, 5, 6, 7, 8 (referenced by components, technology, state management, configuration, error handling, and decisions sections)
@@ -2128,21 +2109,122 @@ This document contains the following 10 diagrams as specified in the architectur
 ---
 
 **Modular Component Integration:**
-- **Research Modular Components**: Handles multi-step research with tool interaction
-- **Expert Modular Components**: Manages complex reasoning with calculation tools
+- **Researcher Agent**: Uses modular components for multi-step research with tool interaction
+- **Expert Agent**: Uses modular components for complex reasoning with calculation tools
 - **State Synchronization**: Modular component states are synchronized with main graph state
 - **Message Conversion**: Messages are converted between main graph and modular component formats
 
 **Cross-Component Communication:**
-Complex agents use modular components with specific communication patterns:
+Complex agents (Researcher, Expert) use modular components with specific communication patterns:
 - **Main Graph to Modular Component**: Messages are converted between AgentMessage and BaseMessage formats
 - **Modular Component to Main Graph**: Results are extracted and integrated into main workflow state
 - **State Synchronization**: Modular component states are synchronized with main graph state
 - **Message Conversion**: Protocol conversion ensures compatibility between graph types
 
 **Modular Component States Contained Within Main GraphState:**
-Complex agents use modular component states for their internal state management:
+Researcher and Expert agents use modular component states for their internal state management:
 - **ResearchState**: Individual state for each research step with conversation context and tool state
 - **ExpertState**: Single state for expert agent with conversation context and calculation state
 - **State Containment**: Modular component states are contained within the main GraphState
 - **State Isolation**: Each modular component manages its own internal state independently
+
+**Required Diagrams**: 
+- **Main Workflow Graph** - Complete multi-agent system with all agents and workflow
+- **Researcher Subgraph** - Detailed view of researcher agent's tool interaction
+- **Expert Subgraph** - Detailed view of expert agent's tool interaction
+
+**Main Workflow Graph:**
+```mermaid
+graph TB
+    subgraph "Main Workflow Graph"
+        Input[Input Interface]
+        Orchestrator[Orchestrator]
+        Planner[Planner Agent]
+        Critic[Critic Agent]
+        Researcher[Researcher Agent]
+        Expert[Expert Agent]
+        Finalizer[Finalizer Agent]
+    end
+    
+    Input --> Orchestrator
+    Orchestrator --> Planner
+    Planner --> Critic
+    Critic -->|Approve| Orchestrator
+    Critic -->|Reject| Planner
+    
+    Orchestrator --> Researcher
+    Researcher --> Orchestrator
+    
+    Orchestrator --> Expert
+    Expert --> Orchestrator
+    
+    Orchestrator --> Finalizer
+    Finalizer --> Input
+    
+    classDef mainNode fill:#e1f5fe
+    classDef agentNode fill:#f3e5f5
+    classDef criticNode fill:#fff3e0
+    
+    class Input,Orchestrator,Finalizer mainNode
+    class Planner,Researcher,Expert agentNode
+    class Critic criticNode
+```
+
+**Researcher Subgraph:**
+```mermaid
+graph TB
+    subgraph "Researcher Subgraph"
+        Researcher[Researcher Agent]
+        Tools1[Web Search]
+        Tools2[Wikipedia]
+        Tools3[YouTube]
+        Tools4[File Readers]
+        Tools5[MCP Tools]
+    end
+    
+    Researcher --> Tools1
+    Researcher --> Tools2
+    Researcher --> Tools3
+    Researcher --> Tools4
+    Researcher --> Tools5
+    
+    Tools1 --> Researcher
+    Tools2 --> Researcher
+    Tools3 --> Researcher
+    Tools4 --> Researcher
+    Tools5 --> Researcher
+    
+    classDef agentNode fill:#e1f5fe
+    classDef toolNode fill:#f3e5f5
+    
+    class Researcher agentNode
+    class Tools1,Tools2,Tools3,Tools4,Tools5 toolNode
+```
+
+**Expert Subgraph:**
+```mermaid
+graph TB
+    subgraph "Expert Subgraph"
+        Expert[Expert Agent]
+        Tools1[Calculator]
+        Tools2[Unit Converter]
+        Tools3[Python REPL]
+        Tools4[MCP Browser Tools]
+    end
+    
+    Expert --> Tools1
+    Expert --> Tools2
+    Expert --> Tools3
+    Expert --> Tools4
+    
+    Tools1 --> Expert
+    Tools2 --> Expert
+    Tools3 --> Expert
+    Tools4 --> Expert
+    
+    classDef agentNode fill:#e1f5fe
+    classDef toolNode fill:#f3e5f5
+    
+    class Expert agentNode
+    class Tools1,Tools2,Tools3,Tools4 toolNode
+```

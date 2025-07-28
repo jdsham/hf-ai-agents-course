@@ -666,6 +666,16 @@ The workflow consists of 8 distinct steps with specific transitions:
 7. **critic_expert**: Invoke the critic for the expert agent
 8. **finalizer**: Invoke the finalizer agent to generate the final answer and reasoning trace
 
+**Research Step Execution Pattern:**
+The research phase follows a specific sequential execution pattern:
+- **Sequential Processing**: Research steps are executed one at a time, not in parallel
+- **Step-by-Step Evaluation**: Each research step receives individual critic evaluation
+- **State Isolation**: Each research step uses unique step_id (0, 1, 2, etc.) for state isolation
+- **Message Routing**: Messages are filtered by step_id to route to correct research step
+- **Retry Logic**: Failed research steps are retried with critic feedback until approved or retry limit reached
+- **Progression Logic**: Only after critic approves current research step does the system proceed to next research step
+- **Completion Detection**: When all research steps are approved, system proceeds to expert phase
+
 **Quality Control Integration at Each Workflow Step:**
 Critic agents are integrated at three key points in the workflow:
 - **Planner Quality Control**: Critic reviews planning strategy and execution steps
@@ -678,6 +688,10 @@ The orchestrator implements specific execution patterns:
 - **Conditional Routing**: Critic decisions determine whether to proceed or retry
 - **Retry Logic**: Failed steps are retried up to configurable limits
 - **Graceful Degradation**: System continues to finalizer even when retry limits are exceeded
+- **Sequential Research Execution**: Research steps are executed one at a time, not in parallel
+- **Step-by-Step Research Process**: For each research step: Researcher Agent executes → Critic Agent evaluates → If approved, move to next step; if rejected, retry current step
+- **Research Step Isolation**: Each research step uses unique step_id (0, 1, 2, etc.) for state isolation and message routing
+- **Individual Critic Evaluation**: Each research step receives individual critic evaluation before proceeding to the next step
 
 **Critic Integration Patterns and Quality Control Details:**
 - **Dynamic Prompt Selection**: Critic behavior changes based on current workflow step
@@ -719,9 +733,10 @@ sequenceDiagram
             O->>C: Validate Research
             alt Research Approved
                 C->>O: Approve
+                O->>R: Next Research Step
             else Research Rejected
                 C->>O: Reject
-                O->>R: Retry Step
+                O->>R: Retry Current Step
             end
         end
         O->>E: Execute Expert Steps
@@ -746,7 +761,7 @@ sequenceDiagram
 ```
 
 ```mermaid
-stateDiagram-v2
+stateDiagram
     [*] --> Initialized: Input Interface creates GraphState
     Initialized --> Planning: Orchestrator starts workflow
     Planning --> PlanValidation: Planner completes
@@ -816,16 +831,105 @@ Complex agents use subgraphs with specific communication patterns:
 **Required Diagrams**: 
 - **Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
 
-**Related Sections**: Sections 4, 5, 6, 7, 8 (referenced by technology, state management, configuration, error handling, and decisions sections)
+```mermaid
+graph LR
+    subgraph "Message Flow Architecture"
+        subgraph "Orchestrator"
+            O[Orchestrator]
+            MSG[Message Router]
+            STATE[State Manager]
+        end
+        
+        subgraph "Agents"
+            P[Planner Agent]
+            R[Researcher Agent]
+            E[Expert Agent]
+            C[Critic Agent]
+            F[Finalizer Agent]
+        end
+        
+        subgraph "Message Types"
+            INST[Instruction Messages]
+            RESP[Response Messages]
+            FEED[Feedback Messages]
+        end
+    end
+    
+    O --> MSG
+    MSG --> STATE
+    STATE --> MSG
+    
+    MSG -->|Instruction| P
+    MSG -->|Instruction| R
+    MSG -->|Instruction| E
+    MSG -->|Instruction| C
+    MSG -->|Instruction| F
+    
+    P -->|Response| MSG
+    R -->|Response| MSG
+    E -->|Response| MSG
+    C -->|Feedback| MSG
+    F -->|Response| MSG
+    
+    MSG -->|AgentMessage| O
+    
+    classDef orchestrator fill:#e3f2fd
+    classDef agent fill:#f3e5f5
+    classDef message fill:#e8f5e8
+    
+    class O,MSG,STATE orchestrator
+    class P,R,E,C,F agent
+    class INST,RESP,FEED message
+```
 
-**Section Summary**: This section covers the core components of the multi-agent system, including the orchestrator, specialized agents, and their interaction patterns.
+### 5.5 State Coordination
+
+The system implements sophisticated state coordination mechanisms to ensure consistency and reliability across all components.
+
+**How State is Coordinated Across Multiple Components:**
+State coordination is managed through specific mechanisms:
+- **Centralized Coordination**: Orchestrator coordinates state across all components
+- **Synchronization Protocols**: Standardized protocols for state synchronization
+- **Consistency Guarantees**: State consistency guaranteed across all components
+- **Conflict Resolution**: Mechanisms for resolving state conflicts
+- **Coordination Patterns**: Specific patterns for different coordination scenarios
+
+**State Sharing Patterns Between Agents and Orchestrator:**
+The system implements specific state sharing patterns:
+- **Orchestrator Ownership**: Orchestrator owns and manages all shared state
+- **Agent Access**: Agents access state through orchestrator-controlled interfaces
+- **State Updates**: All state updates flow through orchestrator validation
+- **State Isolation**: Agents operate on isolated state portions
+- **State Synchronization**: State synchronized between agents and orchestrator
+
+**State Update Synchronization and Conflict Resolution:**
+State updates are synchronized through specific mechanisms:
+- **Atomic Updates**: State updates are atomic to prevent conflicts
+- **Sequential Processing**: Updates processed sequentially to maintain consistency
+- **Conflict Detection**: Conflicts detected and resolved automatically
+- **Rollback Mechanisms**: Failed updates rolled back to maintain consistency
+- **Validation**: All updates validated before application
+
+**State Coordination Protocols and Consistency Guarantees:**
+The system provides specific consistency guarantees:
+- **Strong Consistency**: All components see consistent state
+- **Eventual Consistency**: State eventually consistent across all components
+- **Causal Consistency**: Causally related updates maintain consistency
+- **Read Consistency**: Read operations return consistent state
+- **Write Consistency**: Write operations maintain state consistency
+
+**Required Diagrams**: None (covered by Data Architecture Diagram in 5.1)
+
+**Related Sections**: Sections 6, 7, 8 (referenced by configuration, error handling, and decisions sections)
+
+**Section Summary**: This section covers the state management architecture and communication patterns of the multi-agent system, describing how the system maintains and synchronizes state across all components.
 
 **Key Takeaways**:
-- 5 specialized agents with distinct roles and responsibilities (Planner, Researcher, Expert, Critic, Finalizer)
-- Orchestrator manages workflow and state machine logic with 8 distinct workflow steps
-- Each agent has specific tools and capabilities with clear interfaces and interaction patterns
-- Components communicate through structured interaction patterns with centralized orchestration
-- Quality control through critic agents at each workflow step ensures answer quality and reliability
+- Centralized GraphState with subgraph states provides hierarchical state management
+- State hierarchy and relationship principles ensure clear state organization and access patterns
+- State transition logic and validation maintain state integrity throughout workflow execution
+- Message protocols and routing patterns enable reliable communication between components
+- State coordination across components ensures consistency and reliability
 
 ---
 
@@ -1225,6 +1329,7 @@ The system implements specific patterns for state isolation and sharing:
 - **Subgraph Isolation**: Each subgraph operates on its own isolated state
 - **Controlled Sharing**: State is shared through orchestrated synchronization
 - **Message-Based Communication**: State updates flow through message passing
+- **Research Step Isolation**: Each research step uses unique step_id for state isolation and message routing
 
 **State Ownership and Access Patterns:**
 Clear ownership and access patterns ensure state integrity:
@@ -1715,7 +1820,7 @@ The system uses agent-specific retry logic to improve robustness and quality, wh
 
 **Retry Counter Management:**
 - **Independent Counters:** Each agent maintains its own retry counter, tracked in the workflow state.
-- **Increment on Critic Rejection:** Retry counters increment when the critic agent rejects an agent’s output.
+- **Increment on Critic Rejection:** The retry counter for the specific agent that was rejected gets incremented (e.g., if planner is rejected, planner's retry counter increments).
 - **Limit Enforcement:** When retry limits are reached, the system proceeds to the finalizer with failure attribution.
 
 **Retry Patterns:**

@@ -82,6 +82,7 @@ The system answers GAIA Level 1 questions through a coordinated workflow of spec
 4. **Expert Reasoning**: Expert Agent synthesizes answer using calculations and reasoning
 5. **Quality Control**: Critic agent reviews each step and provides feedback
 6. **Finalization**: Finalizer Agent produces the complete answer and reasoning trace
+7. **Termination**: Workflow terminates on END node after finalizer agent completes
 
 **System Capabilities:**
 - Answer complex questions requiring research, calculation, and synthesis
@@ -90,10 +91,13 @@ The system answers GAIA Level 1 questions through a coordinated workflow of spec
 - Execute mathematical calculations and code
 - Provide traceable reasoning for all answers
 - Handle errors gracefully with retry logic and quality control
+- Return complete graph state with final answers and reasoning traces
 
 **System Limitations:**
 - No persistent storage between requests (privacy-focused design)
-- Single-request processing (no concurrent question handling)
+- Single-question processing (one question per graph run, no concurrent question handling)
+- Single graph compilation with per-question invocation pattern
+- Complete question isolation (no state crossing between questions)
 - Requires internet connectivity for external APIs
 - Limited to English language input/output
 - Focused on GAIA Level 1 question domain
@@ -109,6 +113,21 @@ The multi-agent system is designed to answer GAIA Level 1 questions, which are c
 - Accessing the internet to find information
 - Performing calculations and logical reasoning
 - Synthesizing information from multiple sources
+
+**Graph Compilation and Invocation Pattern:**
+When used via the entry point, the multi-agent system follows a specific compilation and invocation pattern:
+- **Single Graph Compilation**: The workflow graph is compiled once during system initialization
+- **Configuration Supply**: Entry point supplies graph configuration and prompts to the multi-agent system factory
+- **Factory Processing**: Factory processes configuration contents and sets appropriate values in the graph
+- **Prompt Injection**: Factory injects prompts when building and compiling the graph
+- **Per-Question Invocation**: The compiled graph is invoked once per question to be answered
+- **Isolated Graph State**: Each question has its own isolated graph state when the graph is invoked
+- **Batch Processing**: When the entry point script iterates through multiple questions, a new graph state is created for each question
+- **Single Question Per Run**: A single graph run will answer only one question
+- **No State Crossing**: There will never be any crossing of questions in the same state - each question maintains complete isolation
+- **Graph State Return**: After each graph run, the entry point receives the complete graph state containing all workflow information
+- **Output Extraction**: The entry point extracts the final answer and reasoning trace from the returned graph state
+- **Batch Results Storage**: Extracted answers and reasoning traces are stored in batch result files for all processed questions
 
 **Why the System Exists:**
 The system employs a multi-agent approach to break down complex reasoning problems into specialized tasks:
@@ -152,6 +171,21 @@ graph TB
         GAIA[GAIA Benchmark]
     end
     
+    subgraph "Entry Point & Configuration"
+        EP[Entry Point Script]
+        Config[Configuration Files]
+        Prompts[Prompt Files]
+        Factory[Factory Function]
+    end
+    
+    subgraph "Graph Management"
+        Graph[Compiled Workflow Graph]
+        State1[Graph State 1]
+        State2[Graph State 2]
+        StateN[Graph State N]
+        Output[Batch Results File]
+    end
+    
     subgraph "Multi-Agent System"
         Input[Input Interface]
         Orchestrator[Orchestrator]
@@ -171,14 +205,35 @@ graph TB
         Tools[Calculation Tools]
     end
     
-    User --> Input
+    User --> EP
+    EP --> Config
+    EP --> Prompts
+    Config --> Factory
+    Prompts --> Factory
+    Factory --> Graph
+    
+    Graph --> State1
+    Graph --> State2
+    Graph --> StateN
+    
+    State1 --> Input
+    State2 --> Input
+    StateN --> Input
+    
     Input --> Orchestrator
     Orchestrator --> Planner
     Orchestrator --> Researcher
     Orchestrator --> Expert
     Orchestrator --> Critic
     Orchestrator --> Finalizer
-    Finalizer --> User
+    Finalizer --> State1
+    Finalizer --> State2
+    Finalizer --> StateN
+    
+    State1 --> EP
+    State2 --> EP
+    StateN --> EP
+    EP --> Output
     
     Planner --> LLM
     Researcher --> Search
@@ -186,11 +241,19 @@ graph TB
     Researcher --> YouTube
     Researcher --> Files
     Expert --> Tools
-    Expert --> LLM
-    Critic --> LLM
-    Finalizer --> LLM
     
-    GAIA -.->|Benchmark Questions| User
+    classDef external fill:#ffebee
+    classDef entry fill:#e3f2fd
+    classDef factory fill:#f3e5f5
+    classDef system fill:#e8f5e8
+    classDef deps fill:#fff3e0
+    
+    class User,GAIA external
+    class EP,Config,Prompts entry
+    class Factory factory
+    class Graph,State1,State2,StateN,Output system
+    class Input,Orchestrator,Planner,Researcher,Expert,Critic,Finalizer system
+    class LLM,Search,Wiki,YouTube,Files,Tools deps
 ```
 
 ### 1.4 Technology Stack Overview
@@ -442,9 +505,12 @@ The system consists of a main graph with all agents, where complex agents use su
 
 **Subgraph Integration:**
 - **Researcher Subgraph**: Handles multi-step research with tool interaction (ReAct agent)
-- **Expert Subgraph**: Manages complex reasoning with calculation tools (ReAct agent)
+  - Dynamic state creation based on research step count
+  - No states created if no research steps exist
+- **Expert Subgraph**: Handles reasoning and calculation with tool interaction (ReAct agent)
+  - Always created since Expert agent is mandatory
+  - State always exists regardless of research requirements
 - **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
-- **Message Conversion**: Messages are converted between main graph and subgraph formats
 
 **Required Diagrams**: 
 - **Graph-Based Architecture Diagram** - Multi-agent system as directed graph with nodes, edges, subgraph boundaries, and workflow patterns
@@ -631,16 +697,18 @@ The orchestrator is the central controller that manages the entire workflow exec
 
 **Central Workflow Controller and State Machine Logic:**
 The orchestrator implements a state machine that manages workflow execution:
-- **State Management**: Maintains current workflow state and determines next execution steps
+- **State-Driven Control**: Uses current step and next step state variables to control workflow progression
+- **Conditional Logic**: Employs conditional logic to determine the next workflow step based on current state and agent outputs
 - **Agent Coordination**: Routes messages to appropriate agents based on workflow state
-- **Error Handling**: Manages retry logic and fail-fast termination when agents fail
+- **Retry Management**: Manages agent-specific retry counters and enforces retry limits
 - **Quality Control**: Coordinates critic feedback integration at each workflow step
 
 **Step Determination and Routing Logic:**
 The orchestrator uses conditional logic to determine workflow progression:
-- **Current Step Analysis**: Evaluates current workflow state and agent outputs
-- **Next Step Calculation**: Determines next execution step based on critic decisions
-- **Retry Management**: Increments retry counters when critic rejects agent outputs
+- **State-Based Routing**: Evaluates current workflow state and agent outputs to determine next step
+- **Conditional Logic**: Uses conditional logic to determine the next workflow step based on critic decisions and retry status
+- **Retry Management**: Increments agent-specific retry counters when critic rejects agent outputs and enforces retry limits
+- **State Transition**: Updates current step state variable and routes appropriate messages to the next agent
 - **Completion Detection**: Identifies when workflow should proceed to finalization
 
 **Workflow State Machine with Complete Steps and Transitions:**
@@ -653,6 +721,7 @@ The workflow consists of 8 distinct steps with specific transitions:
 6. **expert**: Invoke the expert agent
 7. **critic_expert**: Invoke the critic agent with expert evaluation prompt
 8. **finalizer**: Invoke the finalizer agent to generate the final answer and reasoning trace
+9. **END**: Workflow termination node (graph workflow terminates here after finalizer agent completes)
 
 **Research Step Execution Pattern:**
 The research phase follows a specific sequential execution pattern:
@@ -675,11 +744,12 @@ The orchestrator implements specific execution patterns:
 - **Sequential Execution**: Steps are executed in a predetermined sequence
 - **Conditional Routing**: Critic decisions determine whether to proceed or retry
 - **Critic Rejection Retry Logic**: Failed steps are retried up to configurable limits when critic rejects agent work
-- **Graceful Critic Rejection Failure**: When critic rejection retry limits are exceeded, the system returns a graceful failure message with specific agent attribution.
+- **Graceful Critic Rejection Failure**: When critic rejection retry limits are exceeded, the system returns a graceful failure message with specific agent attribution
 - **Sequential Research Execution**: Research steps are executed one at a time, not in parallel, to respect API rate limits
 - **Step-by-Step Research Process**: For each research step: Researcher Agent (ReAct agent) executes → Critic Agent evaluates → If approved, move to next step; if rejected, retry current step
 - **Research Step Isolation**: Each research step uses unique step_id (0, 1, 2, etc.) for state isolation and message routing
 - **Individual Critic Evaluation**: Each research step receives individual critic evaluation before proceeding to the next step
+- **Workflow Termination**: After finalizer agent completes, workflow terminates on END node
 
 **Critic Integration Patterns and Quality Control Details:**
 - **Dynamic Prompt Selection**: Critic agent behavior changes based on current workflow step using different prompts
@@ -707,6 +777,7 @@ sequenceDiagram
     participant E as Expert Agent
     participant C as Critic Agent
     participant F as Finalizer Agent
+    participant END as END Node
     
     U->>I: Submit Question
     I->>O: Create GraphState
@@ -743,7 +814,8 @@ sequenceDiagram
         end
         O->>F: Generate Final Answer
         F->>O: Return Answer & Reasoning
-        O->>I: Complete Workflow
+        O->>END: Workflow Termination
+        END->>I: Complete Workflow
         I->>U: Return Results
     end
 ```
@@ -761,8 +833,8 @@ stateDiagram
     Expert --> ExpertValidation: Expert step completes
     ExpertValidation --> Expert: Critic rejects expert
     ExpertValidation --> Finalizing: Critic approves expert
-    Finalizing --> Completed: Finalizer completes
-    Completed --> [*]: Results returned to user
+    Finalizing --> END: Finalizer completes
+    END --> [*]: Workflow termination
     
     note right of Planning
         Retry limit: 2-3
@@ -789,6 +861,9 @@ All agent communication flows through the orchestrator using standardized patter
 **Agent Coordination and Synchronization:**
 The orchestrator manages agent coordination through specific patterns:
 - **Sequential Activation**: Agents are activated in predetermined workflow order
+- **Dynamic State Creation**: Main graph creates subgraph states based on workflow requirements
+- **Research State Management**: Research State instances created dynamically for each research step
+- **Expert State Management**: Expert subgraph state always created since Expert agent is mandatory
 - **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
 - **Message Queuing**: Messages are queued and processed in workflow order
 - **Completion Coordination**: Orchestrator ensures workflow completion before proceeding
@@ -1160,15 +1235,22 @@ The state architecture follows specific hierarchy and relationship principles:
 Researcher and Expert agents use subgraph states for their internal state management:
 - **State Containment**: Subgraph states are contained within the main GraphState
 - **State Isolation**: Each subgraph manages its own internal state independently
-- **researcher_state**: Researcher subgraph state (ReAct agent)
-- **expert_state**: Expert subgraph state (ReAct agent)
+- **Dynamic Research States**: Main graph creates Research State instances dynamically based on number of research steps
+- **Conditional Research Creation**: If no research steps exist, no Researcher subgraph states are created
+- **Mandatory Expert State**: Expert subgraph state is always created since Expert agent must always formulate an answer
+- **researcher_state**: Researcher subgraph state (ReAct agent) - created only when research steps exist
+- **expert_state**: Expert subgraph state (ReAct agent) - always created
 - **Subgraph Dependencies**: subgraph states depend on main graph workflow state
 
 **State Flow Patterns and Coordination Mechanisms:**
 State flows through the system using specific patterns:
 - **Initialization Flow**: Input Interface creates clean GraphState with default values
+- **Dynamic State Creation**: Main graph creates subgraph states based on workflow requirements
+- **Research State Creation**: Main graph creates Research State instances dynamically for each research step
+- **Expert State Creation**: Main graph always creates Expert subgraph state since Expert agent is mandatory
 - **Update Flow**: Agents update state through orchestrator with validation
 - **Synchronization Flow**: Main graph manages state synchronization when invoking researcher and expert subgraphs
+- **State Maintenance**: Main graph keeps subgraph states updated throughout workflow execution
 - **Cleanup Flow**: State is cleared between question processing for privacy
 
 **Overall State Architecture and Design:**
@@ -1203,14 +1285,16 @@ graph TB
         end
         
         subgraph "Subgraph States"
-            subgraph "Researcher States"
-                RS1[ResearcherState 1]
-                RS2[ResearcherState 2]
-                RSN[ResearcherState N]
+            subgraph "Dynamic Research States"
+                RS1[Research State 1]
+                RS2[Research State 2]
+                RSN[Research State N]
+                note1["Created dynamically<br/>based on research_steps<br/>count. If no research<br/>steps, no states created."]
             end
             
-            subgraph "Expert State"
-                ES1[ExpertState]
+            subgraph "Mandatory Expert State"
+                ES1[Expert subgraph state]
+                note2["Always created<br/>regardless of<br/>research steps"]
             end
         end
     end
@@ -1229,18 +1313,20 @@ graph TB
     GS --> ERROR
     GS --> EC
     
-    GS --> RS1
-    GS --> RS2
-    GS --> RSN
+    GS -.-> RS1
+    GS -.-> RS2
+    GS -.-> RSN
     GS --> ES1
     
     classDef mainState fill:#e3f2fd
     classDef field fill:#f3e5f5
     classDef subState fill:#e8f5e8
+    classDef note fill:#fff3e0
     
     class GS mainState
     class Q,RS,ES,RR,EA,ER,CS,NS,RC,RL,AM,ERROR,EC field
     class RS1,RS2,RSN,ES1 subState
+    class note1,note2 note
 ```
 
 ### 5.2 State Hierarchy and Relationships
@@ -1257,8 +1343,8 @@ The GraphState serves as the central state container for the entire workflow:
 
 **Subgraph States Contained Within Main GraphState:**
 Complex agents use subgraph states for their internal state management:
-- **ResearcherState**: Individual state for each research step with conversation context and tool state
-- **ExpertState**: Single state for expert agent with conversation context and calculation state
+- **Research State**: Individual state for each research step with conversation context and tool state
+- **Expert subgraph state**: Single state for expert agent with conversation context and calculation state
 - **State Containment**: Subgraph states are contained within the main GraphState
 - **State Isolation**: Each subgraph manages its own internal state independently
 
@@ -1320,11 +1406,14 @@ The system implements specific state transition logic that governs how state cha
 
 **How State Transitions Occur Between Workflow Steps:**
 State transitions follow a structured process managed by the orchestrator:
-- **Step Determination**: Orchestrator determines next step based on current state and critic decisions
+- **State-Driven Control**: Orchestrator uses current_step and next_step state variables to control workflow progression
+- **Conditional Logic**: Employs conditional logic to determine the next workflow step based on current state and critic decisions
+- **Dynamic State Creation**: Main graph creates subgraph states as needed during workflow execution
+- **Research State Management**: Research State instances created dynamically for each research step
+- **Expert State Management**: Expert subgraph state always created since Expert agent is mandatory
 - **State Validation**: Current state is validated before transition to ensure integrity
 - **State Update**: State is updated with new step information and agent outputs
-- **Transition Execution**: State transition is executed with proper error handling
-- **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
+- **State Synchronization**: Main graph manages researcher and expert subgraph state synchronization when invoking researcher and expert subgraphs
 
 **State Update Patterns and Validation Rules:**
 The system implements specific patterns for state updates:
@@ -1336,11 +1425,11 @@ The system implements specific patterns for state updates:
 
 **Agent-Specific Retry Counter Increments During Critic Rejections:**
 Retry logic is managed through specific state update patterns:
-- **Retry Counter Management**: retry_count is incremented when critic rejects agent outputs
+- **Retry Counter Management**: Orchestrator increments agent-specific retry counters when critic rejects agent outputs
 - **Agent-Specific Limits**: Different agents have different retry limits (planner: 2-3, researcher: 5-7, expert: 4-6)
 - **Retry State Tracking**: Current retry count is tracked in state for each agent
-- **Limit Enforcement**: Retry limits are enforced through state validation
-- **Graceful Critic Rejection Failure**: When critic rejection retry limits are exceeded, the system returns a graceful failure message with specific agent attribution.
+- **Limit Enforcement**: Orchestrator enforces retry limits through state validation
+- **Graceful Failure**: When retry limits are exceeded, the system returns a graceful failure message with specific agent attribution
 
 **State Integrity Checks and Error Handling:**
 State integrity is maintained through comprehensive checks:
@@ -1383,6 +1472,9 @@ The system implements specific communication patterns:
 Complex agents use subgraphs with specific communication protocols:
 - **Main Graph to Subgraph**: AgentMessage format converted to BaseMessage format
 - **Subgraph to Main Graph**: BaseMessage format converted to AgentMessage format
+- **Dynamic State Creation**: Main graph creates subgraph states based on workflow requirements
+- **Research State Management**: Research State instances created dynamically for each research step
+- **Expert State Management**: Expert subgraph state always created since Expert agent is mandatory
 - **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
 - **Message Context**: Message context preserved during conversion
 
@@ -1470,7 +1562,11 @@ The system implements sophisticated state coordination mechanisms to ensure cons
 
 **How State is Coordinated Across Multiple Components:**
 State coordination is managed through specific mechanisms:
-- **Main Graph Coordination**: Main graph coordinates state between researcher and expert agents when invoking their respective subgraphs
+- **Main Graph Control**: Main graph controls the creation of subgraph states for Researcher and Expert agents
+- **Dynamic Research State Creation**: Main graph dynamically creates as many Research State instances as there are research steps
+- **Conditional Research States**: If there are no research steps, no Researcher subgraph states are created
+- **Mandatory Expert State**: Expert subgraph state is always created since it must always be used to formulate an answer, independent of research steps
+- **State Synchronization**: Main graph keeps subgraph states updated as they are created and after they have been used to invoke the subgraphs
 - **Synchronization Protocols**: Standardized protocols for state synchronization between main graph and subgraphs
 - **Consistency Guarantees**: State consistency guaranteed across all components
 - **Conflict Resolution**: Mechanisms for resolving state conflicts
@@ -1479,6 +1575,9 @@ State coordination is managed through specific mechanisms:
 **State Sharing Patterns Between Agents and Main Graph:**
 The system implements specific state sharing patterns:
 - **Main Graph Ownership**: Main graph owns and manages all shared state
+- **Subgraph State Control**: Main graph controls creation and management of subgraph states
+- **Dynamic Research States**: Main graph creates Research State instances based on research step count
+- **Mandatory Expert State**: Main graph always creates Expert subgraph state regardless of research requirements
 - **Agent Access**: Agents access state through main graph-controlled interfaces
 - **State Updates**: All state updates flow through main graph validation
 - **State Isolation**: Agents operate on isolated state portions
@@ -1548,18 +1647,23 @@ The system supports dynamic configuration to enable flexible deployment, agent c
 The system uses a factory pattern to dynamically construct the multi-agent workflow graph and inject configuration and prompts.
 
 **Factory Function Responsibilities:**
-- **Graph Construction**: Builds the main graph and all subgraphs (Researcher, Expert) based on configuration.
-- **Agent Instantiation**: Creates each agent node with injected configuration and prompt.
-- **Prompt Injection**: Loads and injects the correct prompt for each agent, including critic variants.
-- **Tool Binding**: Binds the correct set of tools to each agent based on configuration.
-- **Validation**: Ensures all required configuration and prompts are present and valid.
+- **Configuration Processing**: Processes configuration contents supplied by entry point and sets appropriate values in the graph
+- **Graph Construction**: Builds the main graph and all subgraphs (Researcher, Expert) based on processed configuration
+- **Agent Instantiation**: Creates each agent node with injected configuration and prompt
+- **Prompt Injection**: Loads and injects the correct prompt for each agent, including critic variants, when building the graph
+- **Tool Binding**: Binds the correct set of tools to each agent based on configuration
+- **Validation**: Ensures all required configuration and prompts are present and valid
 
 **Dynamic Graph Creation Flow:**
-1. **Entry Point**: Main script loads configuration and prompts.
-2. **Factory Call**: Passes configuration and prompt objects to the factory function.
-3. **Graph Assembly**: Factory creates all agent nodes, subgraphs, and edges.
-4. **Injection**: Prompts and configuration are injected into each agent.
-5. **Graph Compilation**: Returns a fully configured, ready-to-run workflow graph.
+1. **Entry Point**: Main script loads configuration and prompts
+2. **Configuration Supply**: Entry point supplies configuration and prompts to factory function
+3. **Factory Call**: Passes configuration and prompt objects to the factory function
+4. **Configuration Processing**: Factory processes configuration contents and sets appropriate values
+5. **Graph Assembly**: Factory creates all agent nodes, subgraphs, and edges based on processed configuration
+6. **Prompt Injection**: Prompts are injected into agents when building the graph
+7. **Graph Compilation**: Returns a fully configured, ready-to-run workflow graph
+8. **Single Compilation**: Graph is compiled once and reused for all questions
+9. **Per-Question Invocation**: Compiled graph is invoked once per question with isolated state
 
 **Error Handling:**
 - **Validation Errors**: Missing or invalid configuration/prompt triggers clear errors.
@@ -1573,7 +1677,6 @@ graph TB
     subgraph "Entry Point & Configuration"
         EP[Entry Point Script]
         Config[Configuration Files]
-        EnvVars[Environment Variables]
         Prompts[Prompt Files]
     end
     
@@ -1592,11 +1695,9 @@ graph TB
     end
     
     EP --> Config
-    EP --> EnvVars
     EP --> Prompts
     
     Config --> Factory
-    EnvVars --> Factory
     Prompts --> Factory
     
     Factory --> Validation
@@ -1615,7 +1716,7 @@ graph TB
     classDef factory fill:#f3e5f5
     classDef system fill:#e8f5e8
     
-    class EP,Config,EnvVars,Prompts entry
+    class EP,Config,Prompts entry
     class Factory,Validation,GraphBuilder,AgentCreator,PromptInjector factory
     class Graph,Agents,InjectedPrompts system
 ```
@@ -1625,15 +1726,17 @@ graph TB
 Prompt management is critical for agent behavior, quality, and flexibility.
 
 **Prompt Loading and Injection:**
-- **External Sources**: Prompts are loaded from external files or configuration objects.
-- **Template Support**: Prompts can use templates with variables for dynamic content.
-- **Versioning**: Multiple prompt versions can be maintained for experimentation.
-- **Validation**: Prompts are checked for non-emptiness and basic format before use.
+- **Entry Point Supply**: Prompts are loaded by the entry point from external files or configuration objects
+- **Factory Injection**: Factory injects prompts into agents when building and compiling the graph
+- **Template Support**: Prompts can use templates with variables for dynamic content
+- **Versioning**: Multiple prompt versions can be maintained for experimentation
+- **Validation**: Prompts are checked for non-emptiness and basic format before injection
 
 **Runtime Prompt Usage:**
-- **Dynamic Injection**: Prompts are injected into agents at creation time via the factory.
-- **Contextual Prompts**: Critic agent receives different prompts depending on workflow step (planner, researcher, expert).
-- **Prompt Updates**: Prompts can be updated without code changes, supporting rapid iteration.
+- **Entry Point Loading**: Entry point is supplied prompts from external sources and supplies them to factory
+- **Factory Injection**: Factory injects prompts into agents at creation time during graph building
+- **Contextual Prompts**: Critic agent receives different prompts depending on workflow step (planner, researcher, expert)
+- **Prompt Updates**: Prompts can be updated without code changes, supporting rapid iteration
 
 **Prompt Management Best Practices:**
 - **Separation**: Prompts are kept separate from code for maintainability.
@@ -1647,17 +1750,26 @@ Prompt management is critical for agent behavior, quality, and flexibility.
 The main entry point script is responsible for initializing the system, loading configuration, and managing batch processing.
 
 **Entry Point Responsibilities:**
-- **Argument Handling**: Parses command-line arguments for input/output files and configuration overrides.
-- **Configuration Loading**: Loads and validates all configuration and prompts.
-- **Graph Instantiation**: Calls the factory to build the workflow graph.
-- **Batch Processing**: Processes input questions in batch mode (e.g., from JSONL files).
-- **Error Handling**: Handles errors gracefully, logs failures, and ensures system resilience.
-- **Output Writing**: Writes answers and reasoning traces to output files in required format.
+- **Argument Handling**: Parses command-line arguments for input/output files and configuration overrides
+- **Configuration Loading**: Loads and validates all configuration and prompts
+- **Configuration Supply**: Supplies graph configuration and prompts to the multi-agent system factory
+- **Graph Compilation**: Compiles the workflow graph once during system initialization
+- **Graph Invocation**: Invokes the compiled graph once per question with isolated graph state
+- **Graph State Processing**: Receives complete graph state after each graph run containing final answer and reasoning trace
+- **Output Extraction**: Extracts final answer and reasoning trace from returned graph state
+- **Batch Processing**: Processes input questions in batch mode (e.g., from JSONL files) with new graph state per question
+- **Batch Results Storage**: Stores extracted answers and reasoning traces in batch result files
+- **Error Handling**: Handles errors gracefully, logs failures, and ensures system resilience
+- **Output Writing**: Writes answers and reasoning traces to output files in required format
 
 **Batch Processing Features:**
-- **Progress Tracking**: Tracks and logs progress through batch jobs.
-- **Resource Management**: Manages memory and cleans up resources between questions.
-- **Performance**: Optimized for efficient batch execution.
+- **Progress Tracking**: Tracks and logs progress through batch jobs
+- **Question Isolation**: Each question maintains complete isolation with its own graph state
+- **Graph State Return**: Complete graph state returned after each question processing
+- **Output Extraction**: Final answer and reasoning trace extracted from returned graph state
+- **Batch Results Storage**: All extracted outputs stored in consolidated batch result files
+- **Resource Management**: Manages memory and cleans up resources between questions
+- **Performance**: Optimized for efficient batch execution with isolated per-question processing
 
 **Required Diagrams**: None (text-based section)
 
@@ -1668,8 +1780,39 @@ The main entry point script is responsible for initializing the system, loading 
 **Key Takeaways**:
 - Dynamic configuration enables flexible deployment and agent customization
 - Factory pattern supports modular, maintainable, and testable graph construction
+- Entry point supplies configuration and prompts to factory for injection during graph building
 - Prompt management allows rapid iteration and quality control of agent behavior
+- Single graph compilation with per-question invocation ensures efficient batch processing
+- Complete question isolation prevents state crossing and maintains privacy
+- Clean output interface with graph state return and entry point extraction
 - Entry point and batch processing support scalable, resilient, and automated operation
+
+### 6.5 Output Interface and Data Flow
+
+The system implements a clean output interface where the multi-agent system graph returns complete graph state, and the entry point extracts and processes the valuable information.
+
+**Graph Output Interface:**
+- **Complete State Return**: The multi-agent system graph returns the complete graph state after each run
+- **Final Answer Variable**: Graph state contains the final answer generated by the finalizer agent
+- **Reasoning Trace Variable**: Graph state contains the complete reasoning trace showing the workflow execution
+- **Workflow Information**: Graph state includes all intermediate results, agent outputs, and workflow metadata
+- **No Direct Output**: The graph itself does not write files or format output - it simply returns state
+
+**Entry Point Output Processing:**
+- **State Reception**: Entry point receives the complete graph state after each graph invocation
+- **Value Extraction**: Entry point extracts the final answer and reasoning trace from the returned state
+- **Batch Consolidation**: Extracted outputs are consolidated into batch result files
+- **Format Management**: Entry point handles all output formatting and file writing
+- **Error Handling**: Entry point processes any error states or failure information from graph state
+
+**Data Flow Pattern:**
+1. **Graph Execution**: Multi-agent system processes question and returns complete graph state
+2. **State Reception**: Entry point receives graph state containing all workflow information
+3. **Value Extraction**: Entry point extracts final answer and reasoning trace from state
+4. **Batch Storage**: Extracted values are stored in batch result files
+5. **Resource Cleanup**: Graph state is cleaned up and resources are freed
+
+**Required Diagrams**: None (text-based section)
 
 ---
 
@@ -2068,7 +2211,11 @@ This document contains the following 10 diagrams as specified in the architectur
 
 **Modular Component Integration:**
 - **Researcher Agent**: Uses modular components for multi-step research with tool interaction
+  - Dynamic state creation based on research step count
+  - No states created if no research steps exist
 - **Expert Agent**: Uses modular components for complex reasoning with calculation tools
+  - Always created since Expert agent is mandatory
+  - State always exists regardless of research requirements
 - **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
 - **Message Conversion**: Messages are converted between main graph and modular component formats
 
@@ -2076,13 +2223,19 @@ This document contains the following 10 diagrams as specified in the architectur
 Complex agents (Researcher, Expert) use modular components with specific communication patterns:
 - **Main Graph to Modular Component**: Messages are converted between AgentMessage and BaseMessage formats
 - **Modular Component to Main Graph**: Results are extracted and integrated into main workflow state
+- **Dynamic State Creation**: Main graph creates subgraph states based on workflow requirements
+- **Research State Management**: Research State instances created dynamically for each research step
+- **Expert State Management**: Expert subgraph state always created since Expert agent is mandatory
 - **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
 - **Message Conversion**: Protocol conversion ensures compatibility between graph types
 
 **Modular Component States Contained Within Main GraphState:**
 Researcher and Expert agents use modular component states for their internal state management:
-- **ResearchState**: Individual state for each research step with conversation context and tool state
-- **ExpertState**: Single state for expert agent with conversation context and calculation state
+- **Dynamic Research States**: Research State instances created dynamically for each research step
+- **Conditional Research Creation**: If no research steps exist, no Research State instances are created
+- **Mandatory Expert State**: Expert subgraph state always created since Expert agent is mandatory
+- **Research State**: Individual state for each research step with conversation context and tool state
+- **Expert subgraph state**: Single state for expert agent with conversation context and calculation state
 - **State Containment**: Modular component states are contained within the main GraphState
 - **State Isolation**: Each modular component manages its own internal state independently
 

@@ -53,7 +53,6 @@ This document provides a comprehensive architectural overview of the multi-agent
 - **Students**: Learning about multi-agent systems, LLM orchestration, and graph-based workflows
 - **Maintainers**: Understanding system behavior, troubleshooting issues, or performing maintenance
 
-**Required Diagrams**: None (text-based section)
 
 ### 1.2 Quick Start Guide
 
@@ -102,7 +101,6 @@ The system answers GAIA Level 1 questions through a coordinated workflow of spec
 - Limited to English language input/output
 - Focused on GAIA Level 1 question domain
 
-**Required Diagrams**: None (text-based section)
 
 ### 1.3 System Purpose and Goals
 
@@ -292,45 +290,6 @@ The system uses **graph-based workflow orchestration** with **multi-agent coordi
 - **Configuration Management**: Environment variables for API keys and settings
 - **Error Handling**: Comprehensive error handling with retry logic and fail-fast termination
 
-**Required Diagrams**: None (covered by System Context Diagram in 1.3)
-
-### 1.5 Navigation Tips
-
-This document is organized to support different reading patterns and user needs. Use these navigation tips to find the information you need efficiently.
-
-**For New Readers (Multi-Agent Systems):**
-- **Start with**: Section 2 (Architecture Principles & Patterns) for foundational concepts
-- **Then read**: Section 3 (Core Components & Workflow) for system understanding
-- **Focus on**: Understanding the graph-based workflow and agent coordination patterns
-
-**For Familiar Readers (Multi-Agent Concepts):**
-- **Skip to**: Section 3 (Core Components & Workflow) for system details
-- **Review**: Section 4 (Technology Stack & Integration) for implementation specifics
-- **Reference**: Section 5 (State Management & Communication) for technical details
-
-**For Implementation Details:**
-- **Jump to**: Section 5 (State Management & Communication) for state and message protocols
-- **Check**: Section 6 (Configuration & Deployment) for setup and configuration
-- **Review**: Section 7 (Error Handling & Quality Assurance) for operational concerns
-
-**For Troubleshooting and Operations:**
-- **Go to**: Section 7 (Error Handling & Quality Assurance) for error handling and quality control
-- **Reference**: Section 8 (Architectural Decisions & Future Considerations) for decision rationale
-- **Check**: Section 6 (Configuration & Deployment) for configuration and deployment issues
-
-**For System Extension and Modification:**
-- **Start with**: Section 2 (Architecture Principles & Patterns) for design principles
-- **Review**: Section 3 (Core Components & Workflow) for component responsibilities
-- **Check**: Section 8 (Architectural Decisions & Future Considerations) for design rationale
-
-**Cross-Reference Guide:**
-- **State Management**: See Section 5 for GraphState structure and state transitions
-- **Tool Integration**: See Section 4 for external tools and integration patterns
-- **Error Handling**: See Section 7 for retry logic and quality control
-- **Configuration**: See Section 6 for factory pattern and dynamic configuration
-
-**Required Diagrams**: None (text-based section)
-
 **Related Sections**: Section 2 (Architecture Principles & Patterns) for system context
 
 **Section Summary**: This section provides the foundation for understanding and navigating the architecture document, including reader guidance, quick start information, system purpose and goals, technology overview, and navigation tips.
@@ -425,7 +384,6 @@ The system architecture is based on several key decisions that balance simplicit
 - **Alternative Considered**: Dynamic workflow generation
 - **Rejection Reason**: Would add complexity and make system behavior less predictable
 
-**Required Diagrams**: None (text-based section)
 
 ### 2.3 Quality Attributes
 
@@ -467,7 +425,6 @@ The system architecture is designed to achieve specific quality attributes that 
 - **Sequential Execution**: Sequential processing ensures API rate limit compliance
 - **Resource Management**: Proper cleanup and resource management
 
-**Required Diagrams**: None (text-based section)
 
 ### 2.4 System Architecture Overview
 
@@ -484,10 +441,16 @@ The system consists of a main graph with all agents, where complex agents use su
 **Graph Structure:**
 - **Orchestrator Node**: Central control node that manages workflow execution and state transitions
 - **Planner Node**: Agent responsible for question analysis and strategy creation
-- **Researcher Node**: Agent responsible for information gathering, uses subgraph patterns for tool interaction (ReAct agent)
-- **Expert Node**: Agent responsible for specialized reasoning and calculations, uses subgraph patterns for tool interaction (ReAct agent)
+- **Researcher Node**: Main graph node responsible for managing research workflow and subgraph state (invokes Researcher Agent in subgraph)
+- **Expert Node**: Main graph node responsible for managing expert workflow and subgraph state (invokes Expert Agent in subgraph)
 - **Critic Node**: Quality control agent for planner, researcher, and expert outputs with dynamic prompts
 - **Finalizer Node**: Produces final answer and reasoning trace
+
+**Node vs Agent Clarification:**
+- **Main Graph Nodes**: Orchestrator, Planner, Researcher Node, Expert Node, Critic, Finalizer
+- **Subgraph Agents**: Researcher Agent (within Researcher Node's subgraph), Expert Agent (within Expert Node's subgraph)
+- **Direct Agents**: Planner, Critic, Finalizer (operate directly in main graph)
+- **Subgraph Agents**: Researcher Agent, Expert Agent (operate within their respective subgraphs)
 
 **Workflow Patterns:**
 - **State-Driven Execution**: Workflow progression based on current state and critic decisions
@@ -500,17 +463,19 @@ The system consists of a main graph with all agents, where complex agents use su
 - **Planning Flow**: Orchestrator routes to Planner Agent for execution planning
 - **Research Flow**: Orchestrator routes to Researcher Agent for information gathering
 - **Expert Flow**: Orchestrator routes to Expert Agent for reasoning and calculation
-- **Quality Flow**: Critic agent reviews outputs and provides feedback
-- **Output Flow**: Finalizer Agent produces final answer and reasoning trace
+- **Critic Flow**: Critic agent reviews outputs and provides feedback
+- **Finalizer Flow**: Finalizer Agent produces final answer and reasoning trace
 
 **Subgraph Integration:**
-- **Researcher Subgraph**: Handles multi-step research with tool interaction (ReAct agent)
-  - Dynamic state creation based on research step count
+- **Researcher Node & Subgraph**: Main graph node manages research workflow and invokes Researcher Agent in subgraph
+  - Researcher Node handles dynamic state creation based on research step count
+  - Researcher Agent performs actual research tasks using ReAct patterns
   - No states created if no research steps exist
-- **Expert Subgraph**: Handles reasoning and calculation with tool interaction (ReAct agent)
-  - Always created since Expert agent is mandatory
+- **Expert Node & Subgraph**: Main graph node manages expert workflow and invokes Expert Agent in subgraph
+  - Expert Node always creates and manages expert subgraph state
+  - Expert Agent performs reasoning and calculations using ReAct patterns
   - State always exists regardless of research requirements
-- **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
+- **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
 
 **Required Diagrams**: 
 - **Graph-Based Architecture Diagram** - Multi-agent system as directed graph with nodes, edges, subgraph boundaries, and workflow patterns
@@ -558,6 +523,7 @@ graph TB
 - Key architectural decisions balance simplicity, maintainability, and functionality with clear rationale for each choice
 - Quality attributes (reliability, maintainability, extensibility, testability, performance) are achieved through specific architectural mechanisms
 - Graph-based architecture with subgraph patterns enables complex workflow orchestration and tool integration
+- **Node vs Agent Architecture**: Clear distinction between main graph nodes (orchestration/management) and subgraph agents (task execution)
 
 ---
 
@@ -721,7 +687,7 @@ The workflow consists of 8 distinct steps with specific transitions:
 6. **expert**: Invoke the expert agent
 7. **critic_expert**: Invoke the critic agent with expert evaluation prompt
 8. **finalizer**: Invoke the finalizer agent to generate the final answer and reasoning trace
-9. **END**: Workflow termination node (graph workflow terminates here after finalizer agent completes)
+9. **END**: Workflow termination node (finalizer agent routes to END node after completing its work)
 
 **Research Step Execution Pattern:**
 The research phase follows a specific sequential execution pattern:
@@ -749,7 +715,7 @@ The orchestrator implements specific execution patterns:
 - **Step-by-Step Research Process**: For each research step: Researcher Agent (ReAct agent) executes → Critic Agent evaluates → If approved, move to next step; if rejected, retry current step
 - **Research Step Isolation**: Each research step uses unique step_id (0, 1, 2, etc.) for state isolation and message routing
 - **Individual Critic Evaluation**: Each research step receives individual critic evaluation before proceeding to the next step
-- **Workflow Termination**: After finalizer agent completes, workflow terminates on END node
+- **Workflow Termination**: Finalizer agent routes to END node after completing its work
 
 **Critic Integration Patterns and Quality Control Details:**
 - **Dynamic Prompt Selection**: Critic agent behavior changes based on current workflow step using different prompts
@@ -761,7 +727,6 @@ The orchestrator implements specific execution patterns:
 - **State Tracking**: Complete visibility into workflow state and transitions
 - **Message Logging**: All inter-agent messages are logged for traceability
 - **Error Reporting**: Detailed error information for failed steps
-- **Performance Monitoring**: Execution time tracking for each workflow step
 
 **Required Diagrams**: 
 - **Main Workflow Sequence Diagram** - Complete end-to-end workflow execution
@@ -814,7 +779,7 @@ sequenceDiagram
         end
         O->>F: Generate Final Answer
         F->>O: Return Answer & Reasoning
-        O->>END: Workflow Termination
+        F->>END: Workflow Termination
         END->>I: Complete Workflow
         I->>U: Return Results
     end
@@ -859,42 +824,105 @@ All agent communication flows through the orchestrator using standardized patter
 - **Context Isolation**: Each agent maintains conversation context with the orchestrator
 
 **Agent Coordination and Synchronization:**
-The orchestrator manages agent coordination through specific patterns:
-- **Sequential Activation**: Agents are activated in predetermined workflow order
-- **Dynamic State Creation**: Main graph creates subgraph states based on workflow requirements
-- **Research State Management**: Research State instances created dynamically for each research step
-- **Expert State Management**: Expert subgraph state always created since Expert agent is mandatory
-- **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
-- **Message Queuing**: Messages are queued and processed in workflow order
-- **Completion Coordination**: Orchestrator ensures workflow completion before proceeding
+The orchestrator manages agent coordination through state-driven workflow control:
+- **State-Driven Activation**: Agents are activated based on current workflow state and conditional logic
+- **Conditional Workflow Control**: Orchestrator uses current_step and next_step state variables to determine next execution step
+- **First-Time Agent Invocation**: Orchestrator sends instructions to planner, researcher, and expert agents for initial task execution (create plan, research topic, answer question)
+- **Critic Rejection Handling**: Orchestrator sends feedback messages to agents when critic rejects their work, enabling agents to improve quality
+- **Research Message Partitioning**: Messages to research agent are partitioned by current research step ID
+- **Retry Management**: Orchestrator manages agent-specific retry counters and enforces retry limits
+- **Finalizer Routing**: Orchestrator routes to finalizer agent when critic approves expert's work or when any agent's retry limit is exceeded
 
 **Agent State Sharing and Isolation:**
 The system implements specific state management patterns:
 - **Centralized State**: GraphState contains all workflow state and agent data
-- **Agent Isolation**: Each agent operates on isolated state portions
-- **State Updates**: Agent outputs update centralized state through orchestrator
+- **Agent Isolation**: Agents have isolated conversations with the orchestrator, but share access to main graph state variables where appropriate
+- **State Access Patterns**: Some agents modify graph state variables while others read them, with appropriate access based on workflow step
+- **Direct State Updates**: Planner, critic, and finalizer agents directly access and update the main graph state with their results
+- **Orchestrator State Management**: Orchestrator updates the main graph state for workflow management (current_step, next_step, retry_count, current_research_step_id, etc.)
+- **Main Graph Node State Management**: Main graph nodes (researcher, expert) handle dynamic creation, management, and updating of their respective subgraph states
+- **Subgraph State Access**: Subgraph states are accessible by both their respective subgraphs and the main graph nodes that manage them
+- **State Extraction and Integration**: Main graph nodes extract information from subgraph states and update main graph state variables
 - **Context Preservation**: Agent conversation history is preserved for feedback loops
 
+**Research Agent Workflow Management:**
+The research agent workflow involves coordination between orchestrator and researcher node:
+- **Orchestrator Research Responsibilities**:
+  - Tracks, updates, and manages the current research step ID in the main graph state
+  - Sends instructions to research agent for initial task execution (research topic)
+  - Sends feedback messages to research agent when critic rejects work, enabling improvement
+  - Partitions messages to research agent by current research step ID
+  - Manages research step progression based on critic decisions
+- **Researcher Node Responsibilities**:
+  - Dynamic creation, management, updating, and access of research subgraph states by research step ID
+  - Acts as interface between main graph and specific subgraph state
+  - Manages orchestrator and research agent communication based on step ID
+  - Extracts information and updates main graph state
+  - Invokes researcher agent via researcher subgraph
+- **Research Step Coordination**: Orchestrator manages step progression while researcher node manages state and subgraph execution
+
+**Expert Agent Workflow Management:**
+The expert agent workflow involves coordination between orchestrator and expert node:
+- **Orchestrator Expert Responsibilities**:
+  - Sends instructions to expert agent for initial task execution (answer question)
+  - Sends feedback messages to expert agent when critic rejects work, enabling improvement
+  - Handles agent communication with the expert agent
+- **Expert Node Responsibilities**:
+  - Owns creation, management, updating, and access of expert subgraph state
+  - Acts as interface between main graph and expert subgraph state
+  - Handles all aspects of updating the main graph and subgraph states
+  - Manages orchestrator and expert agent communication
+  - Extracts information and updates main graph state
+  - Invokes expert agent via expert subgraph
+- **Expert Coordination**: Orchestrator handles agent communication with expert agent based on first-time invocation or critic rejection retry
+
 **Agent Lifecycle Management:**
-The orchestrator manages agent lifecycle through specific patterns:
-- **Initialization**: Agents are initialized with injected configuration and prompts
-- **Activation**: Agents are activated based on workflow state and orchestrator decisions
-- **Execution**: Agents execute their specialized tasks with provided context
-- **Deactivation**: Agents complete execution and return control to orchestrator
+The orchestrator manages agent lifecycle through state-driven workflow control:
+- **State-Driven Activation**: Agents are activated based on current workflow state and orchestrator conditional logic
+- **Workflow State Transitions**: Orchestrator updates current_step state variable and routes to next agent based on conditional logic
+- **Research Step Progression**: Orchestrator manages research step progression based on critic decisions
+- **Retry Coordination**: Orchestrator manages agent-specific retry counters and enforces retry limits
+- **Finalizer Routing**: Orchestrator routes to finalizer agent when critic approves expert's work or when any agent's retry limit is exceeded
 
 **Message Protocol and Structure:**
-All agent communication uses the AgentMessage protocol:
-- **Sender**: Source agent identifier
-- **Receiver**: Target agent identifier (usually "orchestrator")
-- **Type**: Message type (instruction, feedback, response)
-- **Content**: Message content and data
-- **Step ID**: Optional research step identifier for context
+All agents communicate with the orchestrator using the AgentMessage protocol:
+- **AgentMessage Protocol**: Standard protocol for all agent-orchestrator communication
+  - **Sender**: Source agent identifier
+  - **Receiver**: Target agent identifier (usually "orchestrator")
+  - **Type**: Message type (instruction, feedback, response)
+  - **Content**: Message content and data
+  - **Step ID**: Optional research step identifier for context
+- **Direct Agent Communication**: Planner, critic, and finalizer agents communicate directly with orchestrator
+- **Subgraph Agent Communication**: Researcher and expert agents communicate with orchestrator through their respective main graph nodes
+- **Main Graph Node Synchronization**: Researcher and expert main graph nodes synchronize conversation between main graph's AgentMessage protocol and their respective subgraph states
+- **BaseMessage Protocol**: Used within subgraphs for internal researcher and expert agent communication
+- **Message Conversion**: Main graph nodes handle protocol conversion between AgentMessage and BaseMessage for subgraph communication
+
+**Orchestrator Message Patterns:**
+The orchestrator follows specific message patterns when communicating with agents:
+- **First-Time Agent Invocation**: 
+  - Sends instructions to planner agent for initial task execution (create plan)
+  - Sends instructions to research agent for initial task execution (research topic)
+  - Sends instructions to expert agent for initial task execution (answer question)
+- **Critic Rejection Handling**:
+  - Sends feedback messages to planner agent when critic rejects work, enabling improvement
+  - Sends feedback messages to research agent when critic rejects work, enabling improvement
+  - Sends feedback messages to expert agent when critic rejects work, enabling improvement
+- **Research Message Partitioning**: Messages to research agent are partitioned by current research step ID
+- **Message Content**: Instructions contain task-specific guidance, feedback messages contain critic's improvement suggestions
+- **Finalizer Routing**: Finalizer agent routes to END node after completing its work, orchestrator routes to finalizer when critic approves expert's work or when any agent's retry limit is exceeded
 
 **Cross-Graph Communication:**
 Complex agents use subgraphs with specific communication patterns:
 - **Main Graph to Subgraph**: Messages are converted between AgentMessage and BaseMessage formats
 - **Subgraph to Main Graph**: Results are extracted and integrated into main workflow state
-- **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
+- **Main Graph Node Management**: Main graph nodes handle dynamic state creation and management for their respective subgraphs
+- **Researcher Node Interface**: Acts as interface between main graph and research subgraph state
+- **Expert Node Interface**: Acts as interface between main graph and expert subgraph state
+- **Research Step Coordination**: Orchestrator manages research step progression while researcher node handles subgraph execution
+- **Expert Coordination**: Orchestrator sends instructions to expert agent for initial task execution and feedback messages when critic rejects work
+- **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
+- **State Extraction and Integration**: Main graph nodes extract information from subgraph states and update main graph state variables
 - **Message Conversion**: Protocol conversion ensures compatibility between graph types
 
 **Required Diagrams**: 
@@ -992,7 +1020,6 @@ The multi-agent system is built on a foundation of modern Python frameworks and 
 - **Usage**: System implementation, tool execution, external API integration
 - **Benefits**: Modern language features, extensive ecosystem, developer productivity
 
-**Required Diagrams**: None (text-based section)
 
 ### 4.2 LLM Integration
 
@@ -1026,7 +1053,6 @@ The system integrates with OpenAI's large language models to provide reasoning, 
 - **Request Optimization**: Efficient API usage with appropriate request batching
 - **Error Handling**: Comprehensive error handling for API failures and network issues
 
-**Required Diagrams**: None (text-based section)
 
 ### 4.3 External Tools and Integration
 
@@ -1232,12 +1258,33 @@ The state architecture follows specific hierarchy and relationship principles:
 - **Subgraph States**: Specialized states for complex agents (Researcher, Expert) with their own state management
 - **Agent States**: Individual agent conversation history and context
 
-Researcher and Expert agents use subgraph states for their internal state management:
+**Researcher and Expert Nodes vs Agents:**
+
+The architecture distinguishes between **main graph nodes** and **subgraph agents**:
+
+**Main Graph Nodes (Researcher Node, Expert Node):**
+- **Researcher Node**: Main graph node responsible for managing research workflow and subgraph state
+- **Expert Node**: Main graph node responsible for managing expert workflow and subgraph state
+- **Node Responsibilities**: These nodes handle dynamic creation, management, and updating of their respective subgraph states
+- **Interface Role**: Act as interfaces between main graph and their respective subgraph agents
+- **State Management**: Own and manage subgraph states within the main GraphState
+
+**Subgraph Agents (Researcher Agent, Expert Agent):**
+- **Researcher Agent**: ReAct agent within researcher subgraph that performs actual research tasks
+- **Expert Agent**: ReAct agent within expert subgraph that performs reasoning and calculations
+- **Agent Responsibilities**: Execute specific tasks using tools and ReAct patterns
+- **Subgraph Context**: Operate within their respective subgraphs with isolated state management
+
+**State Management Architecture:**
 - **State Containment**: Subgraph states are contained within the main GraphState
-- **State Isolation**: Each subgraph manages its own internal state independently
-- **Dynamic Research States**: Main graph creates Research State instances dynamically based on number of research steps
+- **Subgraph State Access**: Subgraph states are accessible by both their respective subgraphs and the main graph nodes that manage them
+- **Main Graph State Access**: Agents share access to main graph state variables where appropriate
+- **Direct State Updates**: Planner, critic, and finalizer agents directly update main graph state with their results
+- **Orchestrator State Management**: Orchestrator manages workflow state variables (current_step, next_step, retry_count, etc.)
+- **Main Graph Node State Management**: Main graph nodes (researcher, expert) handle dynamic creation, management, and updating of their respective subgraph states
+- **Dynamic Research States**: Main graph researcher node creates Research State instances dynamically based on orchestrator's current research step ID
 - **Conditional Research Creation**: If no research steps exist, no Researcher subgraph states are created
-- **Mandatory Expert State**: Expert subgraph state is always created since Expert agent must always formulate an answer
+- **Mandatory Expert State**: Expert subgraph state is always created and owned by the expert node since Expert agent must always formulate an answer
 - **researcher_state**: Researcher subgraph state (ReAct agent) - created only when research steps exist
 - **expert_state**: Expert subgraph state (ReAct agent) - always created
 - **Subgraph Dependencies**: subgraph states depend on main graph workflow state
@@ -1245,12 +1292,13 @@ Researcher and Expert agents use subgraph states for their internal state manage
 **State Flow Patterns and Coordination Mechanisms:**
 State flows through the system using specific patterns:
 - **Initialization Flow**: Input Interface creates clean GraphState with default values
-- **Dynamic State Creation**: Main graph creates subgraph states based on workflow requirements
-- **Research State Creation**: Main graph creates Research State instances dynamically for each research step
-- **Expert State Creation**: Main graph always creates Expert subgraph state since Expert agent is mandatory
-- **Update Flow**: Agents update state through orchestrator with validation
-- **Synchronization Flow**: Main graph manages state synchronization when invoking researcher and expert subgraphs
-- **State Maintenance**: Main graph keeps subgraph states updated throughout workflow execution
+- **Main Graph Node State Management**: Main graph nodes handle dynamic creation, management, and updating of their respective subgraph states
+- **Research State Creation**: Main graph researcher node creates Research State instances dynamically for each research step based on orchestrator's current research step ID
+- **Expert State Creation**: Main graph expert node always creates and owns Expert subgraph state since Expert agent is mandatory
+- **Direct Agent Updates**: Planner, critic, and finalizer agents directly update main graph state with their results
+- **Orchestrator Workflow Updates**: Orchestrator updates workflow state variables (current_step, next_step, retry_count, etc.)
+- **State Extraction and Integration**: Main graph nodes extract information from subgraph states and update main graph state variables
+- **State Maintenance**: Main graph nodes keep subgraph states updated throughout workflow execution
 - **Cleanup Flow**: State is cleared between question processing for privacy
 
 **Overall State Architecture and Design:**
@@ -1567,6 +1615,9 @@ State coordination is managed through specific mechanisms:
 - **Conditional Research States**: If there are no research steps, no Researcher subgraph states are created
 - **Mandatory Expert State**: Expert subgraph state is always created since it must always be used to formulate an answer, independent of research steps
 - **State Synchronization**: Main graph keeps subgraph states updated as they are created and after they have been used to invoke the subgraphs
+- **Subgraph State Extraction**: After subgraph completion, main graph extracts relevant information and updates main graph state variables
+- **Research Results Extraction**: Research results for specific step IDs are extracted from subgraph state and updated in main graph research_results
+- **Expert Answer Extraction**: Expert answer is extracted from subgraph state and updated in main graph expert_answer
 - **Synchronization Protocols**: Standardized protocols for state synchronization between main graph and subgraphs
 - **Consistency Guarantees**: State consistency guaranteed across all components
 - **Conflict Resolution**: Mechanisms for resolving state conflicts
@@ -1575,12 +1626,14 @@ State coordination is managed through specific mechanisms:
 **State Sharing Patterns Between Agents and Main Graph:**
 The system implements specific state sharing patterns:
 - **Main Graph Ownership**: Main graph owns and manages all shared state
-- **Subgraph State Control**: Main graph controls creation and management of subgraph states
-- **Dynamic Research States**: Main graph creates Research State instances based on research step count
-- **Mandatory Expert State**: Main graph always creates Expert subgraph state regardless of research requirements
-- **Agent Access**: Agents access state through main graph-controlled interfaces
-- **State Updates**: All state updates flow through main graph validation
-- **State Isolation**: Agents operate on isolated state portions
+- **Main Graph Node Control**: Main graph nodes control creation and management of their respective subgraph states
+- **Dynamic Research States**: Main graph researcher node creates Research State instances based on orchestrator's current research step ID
+- **Mandatory Expert State**: Main graph expert node always creates and owns Expert subgraph state regardless of research requirements
+- **Direct Agent Access**: Planner, critic, and finalizer agents directly access and update main graph state
+- **Orchestrator Workflow Management**: Orchestrator manages workflow state variables (current_step, next_step, retry_count, etc.)
+- **Subgraph State Access**: Subgraph states are accessible by both their respective subgraphs and the main graph nodes that manage them
+- **State Extraction and Integration**: Main graph nodes extract information from subgraph states and update main graph state variables
+- **State Updates**: All state updates are validated and coordinated appropriately
 - **State Synchronization**: State synchronized between agents and main graph when subgraphs are invoked
 
 **State Update Synchronization and Conflict Resolution:**
@@ -1640,7 +1693,6 @@ The system supports dynamic configuration to enable flexible deployment, agent c
 - **Versioning**: Configuration files are version-controlled for reproducibility.
 - **Error Handling**: Invalid or missing configuration triggers clear error messages and safe fallback.
 
-**Required Diagrams**: None (text-based section)
 
 ### 6.2 Factory Pattern Architecture
 
@@ -1743,7 +1795,6 @@ Prompt management is critical for agent behavior, quality, and flexibility.
 - **Testing**: Prompt changes are tested for quality and safety.
 - **Documentation**: Each prompt is documented for purpose and expected behavior.
 
-**Required Diagrams**: None (text-based section)
 
 ### 6.4 Entry Point and Batch Processing
 
@@ -1771,7 +1822,6 @@ The main entry point script is responsible for initializing the system, loading 
 - **Resource Management**: Manages memory and cleans up resources between questions
 - **Performance**: Optimized for efficient batch execution with isolated per-question processing
 
-**Required Diagrams**: None (text-based section)
 
 **Related Sections**: Sections 7, 8 (referenced by error handling and decisions sections)
 
@@ -1812,7 +1862,6 @@ The system implements a clean output interface where the multi-agent system grap
 4. **Batch Storage**: Extracted values are stored in batch result files
 5. **Resource Cleanup**: Graph state is cleaned up and resources are freed
 
-**Required Diagrams**: None (text-based section)
 
 ---
 
@@ -2030,7 +2079,6 @@ Testing is a first-class concern, with architecture designed for testability at 
 - **Test Data Management:** Test data and fixtures are version-controlled and reusable.
 - **Coverage Metrics:** Test coverage is tracked to ensure quality.
 
-**Required Diagrams**: None (text-based section)
 
 **Related Sections:** Section 8 (referenced by decisions section)
 
@@ -2076,7 +2124,6 @@ The architecture is shaped by several foundational design decisions, each made t
 - Chose a hard-coded workflow for predictability, easier debugging, and clear state transitions.
 - Dynamic workflows were considered but deferred for future extensibility.
 
-**Required Diagrams**: None (text-based section)
 
 ### 8.2 Alternatives Considered
 
@@ -2097,7 +2144,6 @@ Several alternative architectural approaches were evaluated and rejected, with r
 **Alternative Tool Integration Patterns:**
 - Explored plugin-based tool loading but prioritized explicit tool binding for safety and traceability.
 
-**Required Diagrams**: None (text-based section)
 
 ### 8.3 Trade-offs and Risks
 
@@ -2121,7 +2167,6 @@ The architecture reflects conscious trade-offs to balance system goals, with ide
 - **Configuration Errors:** Pydantic validation and clear error reporting reduce misconfiguration risk.
 - **Tool Failures:** Fail-fast termination and retry logic ensure system resilience.
 
-**Required Diagrams**: None (text-based section)
 
 ### 8.4 Architecture Evolution
 
@@ -2143,7 +2188,6 @@ The architecture is designed to support future evolution and adaptation as requi
 - Architecture reviews and stakeholder input guide major changes.
 - Quality metrics and feedback inform ongoing improvements.
 
-**Required Diagrams**: None (text-based section)
 
 ### 8.5 Glossary and References
 
@@ -2174,7 +2218,6 @@ The architecture is designed to support future evolution and adaptation as requi
 - Error handling and resilience in distributed systems
 - Testability and maintainability in AI workflows
 
-**Required Diagrams**: None (text-based section)
 
 **Section Summary:**
 This section documents the key architectural decisions, alternatives considered, trade-offs, risks, and future evolution plans for the multi-agent system. It also provides a glossary and references for further study.
@@ -2211,33 +2254,44 @@ This document contains the following 10 diagrams as specified in the architectur
 
 **Modular Component Integration:**
 - **Researcher Agent**: Uses modular components for multi-step research with tool interaction
-  - Dynamic state creation based on research step count
-  - No states created if no research steps exist
+  - Main graph researcher node handles dynamic creation, management, and updating of research subgraph states based on orchestrator's current research step ID
+  - Acts as interface between main graph and research subgraph state
+  - Manages orchestrator and research agent communication based on step ID
+  - Extracts information and updates main graph state
+  - Invokes researcher agent via researcher subgraph
 - **Expert Agent**: Uses modular components for complex reasoning with calculation tools
-  - Always created since Expert agent is mandatory
-  - State always exists regardless of research requirements
-- **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
+  - Main graph expert node owns creation, management, updating, and access of expert subgraph state
+  - Acts as interface between main graph and expert subgraph state
+  - Handles all aspects of updating the main graph and subgraph states
+  - Manages orchestrator and expert agent communication
+  - Extracts information and updates main graph state
+  - Invokes expert agent via expert subgraph
+- **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
 - **Message Conversion**: Messages are converted between main graph and modular component formats
 
 **Cross-Component Communication:**
 Complex agents (Researcher, Expert) use modular components with specific communication patterns:
 - **Main Graph to Modular Component**: Messages are converted between AgentMessage and BaseMessage formats
 - **Modular Component to Main Graph**: Results are extracted and integrated into main workflow state
-- **Dynamic State Creation**: Main graph creates subgraph states based on workflow requirements
-- **Research State Management**: Research State instances created dynamically for each research step
-- **Expert State Management**: Expert subgraph state always created since Expert agent is mandatory
-- **State Synchronization**: Main graph manages state synchronization when invoking researcher and expert subgraphs
+- **Main Graph Node Management**: Main graph nodes handle dynamic state creation and management for their respective subgraphs
+- **Researcher Node Interface**: Acts as interface between main graph and research subgraph state
+- **Expert Node Interface**: Acts as interface between main graph and expert subgraph state
+- **Research Step Coordination**: Orchestrator manages research step progression while researcher node handles subgraph execution
+- **Expert Coordination**: Orchestrator sends instructions to expert agent for initial task execution and feedback messages when critic rejects work
+- **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
+- **State Extraction and Integration**: Main graph nodes extract information from subgraph states and update main graph state variables
 - **Message Conversion**: Protocol conversion ensures compatibility between graph types
 
 **Modular Component States Contained Within Main GraphState:**
 Researcher and Expert agents use modular component states for their internal state management:
-- **Dynamic Research States**: Research State instances created dynamically for each research step
+- **Dynamic Research States**: Research State instances created dynamically for each research step based on orchestrator's current research step ID
 - **Conditional Research Creation**: If no research steps exist, no Research State instances are created
 - **Mandatory Expert State**: Expert subgraph state always created since Expert agent is mandatory
 - **Research State**: Individual state for each research step with conversation context and tool state
 - **Expert subgraph state**: Single state for expert agent with conversation context and calculation state
 - **State Containment**: Modular component states are contained within the main GraphState
-- **State Isolation**: Each modular component manages its own internal state independently
+- **Subgraph State Access**: Subgraph states are accessible by both their respective subgraphs and the main graph
+- **Main Graph State Access**: Agents share access to main graph state variables where appropriate
 
 **Required Diagrams**: 
 - **Main Workflow Graph** - Complete multi-agent system with all agents and workflow

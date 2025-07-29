@@ -64,7 +64,7 @@ The system answers GAIA Level 1 questions through a coordinated workflow of spec
 - **Planner Agent**: Analyzes questions and creates execution plans
 - **Researcher Agent**: Gathers information using web search, Wikipedia, and file processing
 - **Expert Agent**: Performs calculations and synthesizes answers
-- **Critic Agents**: Provide quality control and feedback at each step
+- **Critic Agent**: Provides quality control and feedback at each step
 - **Finalizer Agent**: Produces the final answer and reasoning trace
 
 **Key Architecture Patterns:**
@@ -80,7 +80,7 @@ The system answers GAIA Level 1 questions through a coordinated workflow of spec
 2. **Planning**: Planner Agent creates research and expert steps
 3. **Research**: Researcher Agent gathers information using external tools
 4. **Expert Reasoning**: Expert Agent synthesizes answer using calculations and reasoning
-5. **Quality Control**: Critic agents review each step and provide feedback
+5. **Quality Control**: Critic agent reviews each step and provides feedback
 6. **Finalization**: Finalizer Agent produces the complete answer and reasoning trace
 
 **System Capabilities:**
@@ -114,7 +114,7 @@ The multi-agent system is designed to answer GAIA Level 1 questions, which are c
 The system employs a multi-agent approach to break down complex reasoning problems into specialized tasks:
 - **Decomposition**: Complex questions are broken into research and expert reasoning steps
 - **Specialization**: Each agent focuses on specific capabilities (planning, research, calculation, quality control)
-- **Quality Control**: Critic agents provide feedback and validation at each step
+- **Quality Control**: Critic agent provides feedback and validation at each step
 - **Traceability**: Complete reasoning traces show how answers were derived
 - **Robustness**: Error handling and retry logic ensure reliable operation
 
@@ -345,10 +345,10 @@ The system architecture is based on several key decisions that balance simplicit
 - **Rejection Reason**: Would not support critic-based feedback loops and retry logic
 
 **Multi-Critic Approach vs. Single Critic:**
-- **Decision**: Specialized critic agents for each agent type
-- **Rationale**: Provides specialized feedback for each agent type (planner, researcher, expert)
-- **Alternative Considered**: Single critic agent for all quality control
-- **Rejection Reason**: Would not provide agent-specific feedback and quality assessment
+- **Decision**: Single critic agent with dynamic prompts for each workflow step
+- **Rationale**: Provides specialized feedback for each agent type (planner, researcher, expert) through different prompts
+- **Alternative Considered**: Multiple specialized critic agents for each agent type
+- **Rejection Reason**: Would add unnecessary complexity while single critic with dynamic prompts achieves the same goal
 
 **Subgraph Patterns vs. Monolithic Agents:**
 - **Decision**: Subgraph patterns for complex agent logic
@@ -370,11 +370,11 @@ The system architecture is designed to achieve specific quality attributes that 
 
 **Reliability:**
 - **Error Handling**: Comprehensive error handling with agent-specific retry logic
-- **Critic Agents**: Quality control through specialized critic agents at each workflow step
 - **Fail-Fast Error Handling**: System terminates immediately when critical errors occur
-- **Graceful Critic Rejection Failure**: When critic rejection retry limits are exceeded, the system returns a graceful failure message with specific agent attribution.
 - **State Validation**: Runtime state integrity checks and validation
-- **Critic Rejection Retry Logic**: Configurable retry limits for each agent type when critics reject their work, with graceful failure when limits exceeded
+- **Critic Agent**: Quality control through single critic agent with dynamic prompts at each workflow step
+- **Critic Rejection Retry Logic**: Configurable retry limits for each agent type when critic rejects their work, with graceful failure when limits exceeded
+- **Graceful Critic Rejection Failure**: When critic rejection retry limits are exceeded, the system returns a graceful failure message with specific agent attribution.
 
 **Maintainability:**
 - **Modular Design**: Clear separation of concerns with specialized agent components
@@ -412,10 +412,10 @@ The multi-agent system is built as a directed graph using LangGraph, with nodes 
 
 **High-Level Architecture:**
 The system consists of a main graph with all agents, where complex agents use subgraph patterns for tool interaction:
-- **Main Graph**: Contains orchestrator, planner, researcher, expert, critic agents, and finalizer
+- **Main Graph**: Contains orchestrator, planner, researcher, expert, critic agent, and finalizer
 - **Researcher Agent**: Uses subgraph patterns for complex tool interaction and state management (ReAct agent)
 - **Expert Agent**: Uses subgraph patterns for complex tool interaction and state management (ReAct agent)
-- **Critic Nodes**: Quality control agents for planner, researcher, and expert outputs
+- **Critic Node**: Quality control agent for planner, researcher, and expert outputs with dynamic prompts
 - **Finalizer Node**: Produces final answer and reasoning trace
 
 **Graph Structure:**
@@ -423,21 +423,21 @@ The system consists of a main graph with all agents, where complex agents use su
 - **Planner Node**: Agent responsible for question analysis and strategy creation
 - **Researcher Node**: Agent responsible for information gathering, uses subgraph patterns for tool interaction (ReAct agent)
 - **Expert Node**: Agent responsible for specialized reasoning and calculations, uses subgraph patterns for tool interaction (ReAct agent)
-- **Critic Nodes**: Quality control agents for planner, researcher, and expert outputs
+- **Critic Node**: Quality control agent for planner, researcher, and expert outputs with dynamic prompts
 - **Finalizer Node**: Produces final answer and reasoning trace
 
 **Workflow Patterns:**
 - **State-Driven Execution**: Workflow progression based on current state and critic decisions
 - **Conditional Routing**: Dynamic routing based on critic feedback and critic rejection retry logic
 - **Message Passing**: Structured communication between nodes through orchestrator
-- **Quality Control**: Critic agents provide feedback at each workflow step
+- **Quality Control**: Critic agent provides feedback at each workflow step
 
 **Data Flow:**
 - **Input Flow**: User questions flow from Input Interface to Orchestrator
 - **Planning Flow**: Orchestrator routes to Planner Agent for execution planning
 - **Research Flow**: Orchestrator routes to Researcher Agent for information gathering
 - **Expert Flow**: Orchestrator routes to Expert Agent for reasoning and calculation
-- **Quality Flow**: Critic agents review outputs and provide feedback
+- **Quality Flow**: Critic agent reviews outputs and provides feedback
 - **Output Flow**: Finalizer Agent produces final answer and reasoning trace
 
 **Subgraph Integration:**
@@ -515,7 +515,7 @@ The system follows a hierarchical architecture with clear component boundaries:
 - **Centralized Control**: Orchestrator manages all component interactions and workflow execution
 - **Message-Based Communication**: Components communicate through structured AgentMessage objects
 - **State-Driven Execution**: Component activation based on workflow state and orchestrator decisions
-- **Quality Control Integration**: Critic agents review outputs from planning, research, and expert components
+- **Quality Control Integration**: Critic agent reviews outputs from planning, research, and expert components
 
 **Component Responsibilities and Boundaries:**
 - **Input Interface**: Entry point for question processing and state initialization
@@ -523,7 +523,7 @@ The system follows a hierarchical architecture with clear component boundaries:
 - **Planner Agent**: Question analysis and execution planning
 - **Researcher Agent**: Information gathering with external tools
 - **Expert Agent**: Reasoning and calculation with specialized tools
-- **Critic Agents**: Quality control and feedback for each agent type
+- **Critic Agent**: Quality control and feedback for each agent type
 - **Finalizer Agent**: Answer synthesis and reasoning trace compilation
 
 **Overall System Architecture from Component Perspective:**
@@ -531,7 +531,7 @@ The system architecture emphasizes modularity, clear interfaces, and centralized
 - **Modular Design**: Each component has well-defined responsibilities and interfaces
 - **Clear Interfaces**: Standardized message protocols and component contracts
 - **Centralized Control**: Orchestrator manages workflow and component coordination
-- **Quality Integration**: Critic agents provide feedback at each workflow step
+- **Quality Integration**: Critic agent provides feedback at each workflow step
 - **Tool Integration**: External tools are integrated through specialized subgraphs
 
 **Required Diagrams**: None (covered by Graph-Based Architecture Diagram in 2.4)
@@ -545,14 +545,14 @@ The system architecture emphasizes modularity, clear interfaces, and centralized
 | **Planner Agent** | Plans execution steps | Decomposes question, creates research and expert steps, analyzes requirements | None (pure LLM reasoning) |
 | **Researcher Agent** | Gathers information | Executes research steps, uses external tools, synthesizes research results | Web search, Wikipedia, YouTube, file readers, MCP tools |
 | **Expert Agent** | Synthesizes final answer | Follows expert steps, performs calculations, generates reasoning | Calculator, unit converter, Python REPL |
-| **Critic Agents** | Quality control | Reviews outputs, provides feedback, makes approve/reject decisions | None (pure LLM evaluation) |
+| **Critic Agent** | Quality control | Reviews outputs, provides feedback, makes approve/reject decisions | None (pure LLM evaluation) |
 | **Finalizer Agent** | Produces final answer and reasoning trace | Synthesizes information, formats output, compiles reasoning trace | None (pure LLM synthesis) |
 
 **Component Interfaces and Interaction Patterns:**
 - **Orchestrator Interface**: Central message routing and workflow control
 - **Agent Interfaces**: Standardized message protocols for instruction and response
 - **Subgraph Interfaces**: Tool integration and state management for complex agents
-- **Critic Interfaces**: Quality assessment and feedback generation
+- **Critic Interface**: Quality assessment and feedback generation
 
 **Component Relationships and Dependencies:**
 - **Orchestrator Dependencies**: All agents depend on orchestrator for workflow control
@@ -602,6 +602,7 @@ Each agent in the multi-agent system has specialized capabilities and responsibi
 
 **Critic Agent:**
 - **Purpose**: Quality control and feedback for all agent outputs
+- **Main Responsibility**: Assess the work of a specific agent and determine to approve the work or reject it with feedback to improve the quality of the work
 - **Responsibilities**:
   - Quality control and feedback for all agent outputs
   - Single critic agent with dynamic behavior based on workflow step
@@ -639,18 +640,18 @@ The orchestrator implements a state machine that manages workflow execution:
 The orchestrator uses conditional logic to determine workflow progression:
 - **Current Step Analysis**: Evaluates current workflow state and agent outputs
 - **Next Step Calculation**: Determines next execution step based on critic decisions
-- **Retry Management**: Increments retry counters when critics reject agent outputs
+- **Retry Management**: Increments retry counters when critic rejects agent outputs
 - **Completion Detection**: Identifies when workflow should proceed to finalization
 
 **Workflow State Machine with Complete Steps and Transitions:**
 The workflow consists of 8 distinct steps with specific transitions:
 1. **input**: Start of the graph (default value, never set again)
 2. **planner**: Invoke the planning agent
-3. **critic_planner**: Invoke the critic for the planning agent
+3. **critic_planner**: Invoke the critic agent with planner evaluation prompt
 4. **researcher**: Invoke the researcher agent
-5. **critic_researcher**: Invoke the critic for the researcher agent
+5. **critic_researcher**: Invoke the critic agent with researcher evaluation prompt
 6. **expert**: Invoke the expert agent
-7. **critic_expert**: Invoke the critic for the expert agent
+7. **critic_expert**: Invoke the critic agent with expert evaluation prompt
 8. **finalizer**: Invoke the finalizer agent to generate the final answer and reasoning trace
 
 **Research Step Execution Pattern:**
@@ -664,16 +665,16 @@ The research phase follows a specific sequential execution pattern:
 - **Completion Detection**: When all research steps are approved, system proceeds to expert phase
 
 **Quality Control Integration at Each Workflow Step:**
-Critic agents are integrated at three key points in the workflow:
-- **Planner Quality Control**: Critic reviews planning strategy and execution steps
-- **Researcher Quality Control**: Critic evaluates research results and information quality
-- **Expert Quality Control**: Critic assesses expert reasoning and answer quality
+Critic agent is integrated at three key points in the workflow with different prompts:
+- **Planner Quality Control**: Critic agent reviews planning strategy and execution steps using planner evaluation prompt
+- **Researcher Quality Control**: Critic agent evaluates research results and information quality using researcher evaluation prompt
+- **Expert Quality Control**: Critic agent assesses expert reasoning and answer quality using expert evaluation prompt
 
 **Detailed Workflow Execution Patterns:**
 The orchestrator implements specific execution patterns:
 - **Sequential Execution**: Steps are executed in a predetermined sequence
 - **Conditional Routing**: Critic decisions determine whether to proceed or retry
-- **Critic Rejection Retry Logic**: Failed steps are retried up to configurable limits when critics reject agent work
+- **Critic Rejection Retry Logic**: Failed steps are retried up to configurable limits when critic rejects agent work
 - **Graceful Critic Rejection Failure**: When critic rejection retry limits are exceeded, the system returns a graceful failure message with specific agent attribution.
 - **Sequential Research Execution**: Research steps are executed one at a time, not in parallel, to respect API rate limits
 - **Step-by-Step Research Process**: For each research step: Researcher Agent (ReAct agent) executes → Critic Agent evaluates → If approved, move to next step; if rejected, retry current step
@@ -681,10 +682,10 @@ The orchestrator implements specific execution patterns:
 - **Individual Critic Evaluation**: Each research step receives individual critic evaluation before proceeding to the next step
 
 **Critic Integration Patterns and Quality Control Details:**
-- **Dynamic Prompt Selection**: Critic behavior changes based on current workflow step
+- **Dynamic Prompt Selection**: Critic agent behavior changes based on current workflow step using different prompts
 - **Feedback Integration**: Critic feedback is incorporated into retry attempts
 - **Decision Processing**: Approve/reject decisions drive workflow progression
-- **Quality Assessment**: Specialized criteria for each agent type
+- **Quality Assessment**: Specialized criteria for each agent type through different prompts
 
 **Workflow Monitoring and Debugging Capabilities:**
 - **State Tracking**: Complete visibility into workflow state and transitions
@@ -863,7 +864,7 @@ graph TB
 - Graph-based workflow with 8 distinct steps enables conditional routing and state-driven execution
 - Subgraph patterns for complex agents (Researcher, Expert) provide tool interaction and state management capabilities
 - Structured message protocols and centralized routing ensure reliable communication between components
-- Quality control integration through critic agents at each workflow step improves answer quality and reliability
+- Quality control integration through critic agent at each workflow step improves answer quality and reliability
 
 ---
 
@@ -924,7 +925,7 @@ The system integrates with OpenAI's large language models to provide reasoning, 
 
 **LLM Models and Configuration:**
 - **GPT-4o**: Primary LLM for complex reasoning and planning tasks
-  - Used by: Planner Agent, Critic Agents, Finalizer Agent
+  - Used by: Planner Agent, Critic Agent, Finalizer Agent
   - Capabilities: Complex reasoning, planning, quality assessment, answer synthesis
   - Configuration: Optimized for reasoning and evaluation tasks
 - **GPT-4o-mini**: Secondary LLM for research and expert tasks
@@ -1335,7 +1336,7 @@ The system implements specific patterns for state updates:
 
 **Agent-Specific Retry Counter Increments During Critic Rejections:**
 Retry logic is managed through specific state update patterns:
-- **Retry Counter Management**: retry_count is incremented when critics reject agent outputs
+- **Retry Counter Management**: retry_count is incremented when critic rejects agent outputs
 - **Agent-Specific Limits**: Different agents have different retry limits (planner: 2-3, researcher: 5-7, expert: 4-6)
 - **Retry State Tracking**: Current retry count is tracked in state for each agent
 - **Limit Enforcement**: Retry limits are enforced through state validation
@@ -1753,10 +1754,10 @@ graph TB
 
 ### 7.2 Agent-Specific Critic Rejection Retry Logic
 
-The system uses agent-specific retry logic to improve robustness and quality when critics reject agent work, while preventing infinite retry loops.
+The system uses agent-specific retry logic to improve robustness and quality when critic rejects agent work, while preventing infinite retry loops.
 
 **Retry Configuration:**
-- **Role-Based Limits:** Each agent type has configurable retry limits when critics reject their work (planner: 2-3, researcher: 5-7, expert: 4-6).
+- **Role-Based Limits:** Each agent type has configurable retry limits when critic rejects their work (planner: 2-3, researcher: 5-7, expert: 4-6).
 - **Configuration Injection:** Retry limits are injected via configuration and can be overridden per environment.
 
 **Retry Counter Management:**
@@ -2008,10 +2009,10 @@ The architecture is designed to support future evolution and adaptation as requi
 - **Orchestrator:** Central controller managing workflow, state, and agent coordination.
 - **GraphState:** Centralized state object containing all workflow and agent data.
 - **Subgraph:** Modular workflow component for complex agent logic (e.g., Researcher, Expert ReAct agents).
-- **Critic Agent:** Agent responsible for quality control and feedback at each workflow step.
-- **Prompt:** Instructional text injected into agents to guide LLM behavior.
+- **Critic Agent:** Agent responsible for quality control and feedback at each workflow step using dynamic prompts.
+- **Prompt:** Instructional text injected into agents to define their behavior and capabilities.
 - **Tool:** External capability (API, function, script) used by agents to perform tasks.
-- **Retry Logic:** Mechanism for re-attempting failed agent actions when critics reject their work, up to a configured limit.
+- **Retry Logic:** Mechanism for re-attempting failed agent actions when critic rejects their work, up to a configured limit.
 - **Fail-Fast Termination:** System behavior that terminates immediately with clear failure reasons when critical errors occur.
 - **Graceful Critic Rejection Failure:** System behavior that returns a graceful failure message with specific agent attribution when critic rejection retry limits are exceeded.
 

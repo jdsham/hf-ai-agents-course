@@ -712,7 +712,10 @@ sequenceDiagram
     O->>P: Execute Planning
     P->>O: Return Research & Expert Steps
     O->>C: Validate Plan
-    alt Plan Approved
+    alt Plan Rejected
+        C->>O: Reject
+        O->>P: Retry Planning
+    else Plan Approved
         C->>O: Approve
         O->>R: Execute Research Steps
         loop For Each Research Step
@@ -741,9 +744,6 @@ sequenceDiagram
         F->>O: Return Answer & Reasoning
         O->>I: Complete Workflow
         I->>U: Return Results
-    else Plan Rejected
-        C->>O: Reject
-        O->>P: Retry Planning
     end
 ```
 
@@ -825,57 +825,36 @@ Complex agents use subgraphs with specific communication patterns:
 - **Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
 
 ```mermaid
-graph LR
-    subgraph "Message Flow Architecture"
-        subgraph "Orchestrator"
-            O[Orchestrator]
-            MSG[Message Router]
-            STATE[State Manager]
-        end
-        
-        subgraph "Agents"
-            P[Planner Agent]
-            R[Researcher Agent]
-            E[Expert Agent]
-            C[Critic Agent]
-            F[Finalizer Agent]
-        end
-        
-        subgraph "Message Types"
-            INST[Instruction Messages]
-            RESP[Response Messages]
-            FEED[Feedback Messages]
-        end
+graph TB
+    subgraph "Message Flow"
+        Orchestrator[Orchestrator]
+        Planner[Planner Agent]
+        Researcher[Researcher Agent]
+        Expert[Expert Agent]
+        Critic[Critic Agent]
+        Finalizer[Finalizer Agent]
     end
     
-    O --> MSG
-    MSG --> STATE
-    STATE --> MSG
+    Orchestrator -->|Send Instructions| Planner
+    Orchestrator -->|Send Instructions| Researcher
+    Orchestrator -->|Send Instructions| Expert
+    Orchestrator -->|Send Instructions| Critic
+    Orchestrator -->|Send Instructions| Finalizer
     
-    MSG -->|Instruction| P
-    MSG -->|Instruction| R
-    MSG -->|Instruction| E
-    MSG -->|Instruction| C
-    MSG -->|Instruction| F
-    
-    P -->|Response| MSG
-    R -->|Response| MSG
-    E -->|Response| MSG
-    C -->|Feedback| MSG
-    F -->|Response| MSG
-    
-    MSG -->|AgentMessage| O
+    Planner -->|Return Results| Orchestrator
+    Researcher -->|Return Results| Orchestrator
+    Expert -->|Return Results| Orchestrator
+    Critic -->|Return Feedback| Orchestrator
+    Finalizer -->|Return Results| Orchestrator
     
     classDef orchestrator fill:#e3f2fd
     classDef agent fill:#f3e5f5
-    classDef message fill:#e8f5e8
     
-    class O,MSG,STATE orchestrator
-    class P,R,E,C,F agent
-    class INST,RESP,FEED message
+    class Orchestrator orchestrator
+    class Planner,Researcher,Expert,Critic,Finalizer agent
 ```
 
-### 5.5 State Coordination
+### 3.6 State Coordination
 
 The system implements sophisticated state coordination mechanisms to ensure consistency and reliability across all components.
 

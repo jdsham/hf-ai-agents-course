@@ -68,6 +68,7 @@ The system answers GAIA Level 1 questions through a coordinated workflow of spec
 - **Finalizer Agent**: Produces the final answer and reasoning trace
 
 **Key Architecture Patterns:**
+- **Multi-Agent System**: Decomposes complex problems into specialized, autonomous agents
 - **Graph-Based Workflow**: Uses LangGraph for orchestration with nodes representing agents
 - **ReAct Pattern**: Iterative reasoning and action loops for complex problem solving
 - **Modular Agent Architecture**: Hierarchical workflow components for complex agent logic isolation
@@ -287,7 +288,13 @@ This document is organized to support different reading patterns and user needs.
 
 ### 2.1 Core Design Patterns
 
-The multi-agent system employs five core design patterns that work together to create a robust, maintainable, and extensible architecture.
+The multi-agent system employs six core design patterns that work together to create a robust, maintainable, and extensible architecture.
+
+**Multi-Agent System Pattern:**
+- **Purpose**: Decompose complex problems into specialized, autonomous agents
+- **Implementation**: System-level architectural pattern that distributes responsibilities across multiple cooperating components
+- **Benefits**: Modularity, specialization, distributed responsibility, coordinated problem solving
+- **Usage**: Applied to complex reasoning tasks requiring multiple capabilities and coordinated problem solving
 
 **Factory Pattern:**
 - **Purpose**: Dynamic agent creation and configuration injection
@@ -450,28 +457,26 @@ graph TB
         Researcher[Researcher Agent]
         Expert[Expert Agent]
         Finalizer[Finalizer Agent]
+        Output[Output]
     end
     
     Input --> Orchestrator
     Orchestrator --> Planner
-    Planner --> Critic
-    Critic -->|Approve| Orchestrator
-    Critic -->|Reject| Planner
-    
+    Planner --> Orchestrator
+    Orchestrator --> Critic
+    Critic --> Orchestrator
     Orchestrator --> Researcher
     Researcher --> Orchestrator
-    
     Orchestrator --> Expert
     Expert --> Orchestrator
-    
     Orchestrator --> Finalizer
-    Finalizer --> Input
+    Finalizer --> Output
     
     classDef mainNode fill:#e1f5fe
     classDef agentNode fill:#f3e5f5
     classDef criticNode fill:#fff3e0
     
-    class Input,Orchestrator,Finalizer mainNode
+    class Input,Orchestrator,Finalizer,Output mainNode
     class Planner,Researcher,Expert agentNode
     class Critic criticNode
 ```
@@ -481,7 +486,7 @@ graph TB
 **Section Summary**: This section covers the fundamental architecture principles and patterns that form the foundation of the multi-agent system, providing the conceptual framework for understanding all subsequent sections.
 
 **Key Takeaways**:
-- 5 core design patterns (Factory, Orchestrator, ReAct, Modular Agent Architecture, Message Passing) work together to create a robust architecture
+- 6 core design patterns (Multi-Agent System, Factory, Orchestrator, ReAct, Modular Agent Architecture, Message Passing) work together to create a robust architecture
 - Key architectural decisions balance simplicity, maintainability, and functionality with clear rationale for each choice
 - Quality attributes (reliability, maintainability, extensibility, testability, performance) are achieved through specific architectural mechanisms
 - Graph-based architecture with modular agent architecture enables complex workflow orchestration and tool integration
@@ -758,9 +763,15 @@ stateDiagram
     Finalizing --> Completed: Finalizer completes
     Completed --> [*]: Results returned to user
     
-    note right of Planning: Retry limit: 2-3
-    note right of Research: Retry limit: 5-7
-    note right of Expert: Retry limit: 4-6
+    note right of Planning
+        Retry limit: 2-3
+    end note
+    note right of Research
+        Retry limit: 5-7
+    end note
+    note right of Expert
+        Retry limit: 4-6
+    end note
 ```
 
 ### 3.5 Component Interaction Patterns
@@ -2144,28 +2155,26 @@ graph TB
         Researcher[Researcher Agent]
         Expert[Expert Agent]
         Finalizer[Finalizer Agent]
+        Output[Output]
     end
     
     Input --> Orchestrator
     Orchestrator --> Planner
-    Planner --> Critic
-    Critic -->|Approve| Orchestrator
-    Critic -->|Reject| Planner
-    
+    Planner --> Orchestrator
+    Orchestrator --> Critic
+    Critic --> Orchestrator
     Orchestrator --> Researcher
     Researcher --> Orchestrator
-    
     Orchestrator --> Expert
     Expert --> Orchestrator
-    
     Orchestrator --> Finalizer
-    Finalizer --> Input
+    Finalizer --> Output
     
     classDef mainNode fill:#e1f5fe
     classDef agentNode fill:#f3e5f5
     classDef criticNode fill:#fff3e0
     
-    class Input,Orchestrator,Finalizer mainNode
+    class Input,Orchestrator,Finalizer,Output mainNode
     class Planner,Researcher,Expert agentNode
     class Critic criticNode
 ```

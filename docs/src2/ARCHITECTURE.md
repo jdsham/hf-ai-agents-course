@@ -160,7 +160,7 @@ The system integrates with multiple external services and tools:
 - **Calculation Tools**: Python REPL, unit converters, and mathematical functions
 
 **Required Diagrams**: 
-- **System Context Diagram** - Shows the system and its external actors/dependencies
+- **Diagram 1.1: System Context Diagram** - Shows the system and its external actors/dependencies
 
 ```mermaid
 graph TB
@@ -480,7 +480,7 @@ The system consists of a main graph with all agents, where complex agents use su
 - **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
 
 **Required Diagrams**: 
-- **Graph-Based Architecture Diagram** - Multi-agent system as directed graph with nodes, edges, subgraph boundaries, and workflow patterns
+- **Diagram 2.1: Graph-Based Architecture Diagram** - Multi-agent system as directed graph with nodes, edges, subgraph boundaries, and workflow patterns
 
 ```mermaid
 graph TB
@@ -740,8 +740,8 @@ The orchestrator implements specific execution patterns:
 - **Error Reporting**: Detailed error information for failed steps
 
 **Required Diagrams**: 
-- **Main Workflow Sequence Diagram** - Complete end-to-end workflow execution
-- **State Transition Diagram** - Workflow state machine with all state transitions
+- **Diagram 3.1: Main Workflow Sequence Diagram** - Complete end-to-end workflow execution
+- **Diagram 3.2: State Transition Diagram** - Workflow state machine with all state transitions
 
 ```mermaid
 sequenceDiagram
@@ -958,7 +958,7 @@ Complex agents use subgraphs with specific communication patterns:
 - **Result Isolation**: Agent results are never incorporated into orchestrator conversations
 
 **Required Diagrams**: 
-- **Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
+- **Diagram 3.3: Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
 
 ```mermaid
 graph TB
@@ -1138,7 +1138,7 @@ The system integrates a comprehensive set of external tools and services to prov
   - Usage: Expert Agent for complex mathematical and data processing tasks
 
 **Required Diagrams**: 
-- **Tool Integration & External Dependencies Diagram** - Research tools, expert tools, and external API integration
+- **Diagram 4.1: Tool Integration & External Dependencies Diagram** - Research tools, expert tools, and external API integration
 
 ```mermaid
 graph TB
@@ -1353,7 +1353,7 @@ The state architecture is designed for:
 - **Privacy**: No persistent storage ensures user data privacy
 
 **Required Diagrams**: 
-- **Data Architecture Diagram** - GraphState lifecycle and hierarchical state structure
+- **Diagram 5.2: Data Architecture Diagram** - GraphState lifecycle and hierarchical state structure
 
 ```mermaid
 graph TB
@@ -1658,7 +1658,7 @@ Communication boundaries ensure proper isolation:
 - **Step ID Isolation**: Research conversations are isolated per research step ID
 
 **Required Diagrams**: 
-- **Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
+- **Diagram 5.1: Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
 
 ```mermaid
 graph LR
@@ -1836,7 +1836,7 @@ The system uses a factory pattern to dynamically construct the multi-agent workf
 - **Fallbacks**: Defaults are used if optional configuration is missing.
 
 **Required Diagrams**: 
-- **Configuration & Factory Pattern Diagram** - Entry point flow and factory pattern implementation
+- **Diagram 6.1: Configuration & Factory Pattern Diagram** - Entry point flow and factory pattern implementation
 
 ```mermaid
 graph TB
@@ -2000,7 +2000,7 @@ The system implements a robust error handling architecture to ensure reliability
 - **Security-Conscious Error Logging:** Error details are logged without exposing sensitive data or internal system information
 
 **Required Diagrams**: 
-- **Technical Error Handling Diagram** - Error detection, logging, and fail-fast termination
+- **Diagram 7.1: Technical Error Handling Diagram** - Error detection, logging, and fail-fast termination
 
 ```mermaid
 graph TB
@@ -2069,7 +2069,7 @@ The system implements a comprehensive quality control system with agent-specific
 - **Traceability:** All critic decisions and feedback are logged for audit and improvement.
 
 **Required Diagrams**: 
-- **Quality Control & Retry Logic Architecture Diagram** - Critic agent decision-making and agent-specific retry configuration
+- **Diagram 7.2: Quality Control & Retry Logic Architecture Diagram** - Critic agent decision-making and agent-specific retry configuration
 
 ```mermaid
 graph TB
@@ -2240,7 +2240,7 @@ The system implements a comprehensive logging strategy to establish traceability
 
 
 **Required Diagrams**: 
-- **Logging Architecture Diagram** - Logging components, correlation flow, and storage organization
+- **Diagram 7.3: Logging Architecture Diagram** - Logging components, correlation flow, and storage organization
 
 ```mermaid
 graph TB
@@ -2551,9 +2551,9 @@ Researcher and Expert agents use subgraph states for their internal state manage
 - **Main Graph State Access**: Agents share access to main graph state variables where appropriate
 
 **Required Diagrams**: 
-- **Main Workflow Graph** - Complete multi-agent system with all agents and workflow
-- **Researcher Subgraph** - Detailed view of researcher agent's tool interaction
-- **Expert Subgraph** - Detailed view of expert agent's tool interaction
+- **Diagram 8.1: Main Workflow Graph** - Complete multi-agent system with all agents and workflow
+- **Diagram 8.2: Researcher Subgraph** - Detailed view of researcher agent's tool interaction
+- **Diagram 8.3: Expert Subgraph** - Detailed view of expert agent's tool interaction
 
 **Main Workflow Graph:**
 ```mermaid

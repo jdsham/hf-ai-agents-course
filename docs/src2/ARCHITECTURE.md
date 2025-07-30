@@ -259,6 +259,7 @@ graph TB
 **High-Level Technology Stack:**
 - **LangGraph**: Graph-based workflow orchestration and state management
 - **LangChain**: Multi-agent framework for LLM integration and tool management
+- **Structlog**: Structured logging framework for observability and traceability
 - **Python 3.10+**: Runtime environment and language features
 
 **Key Architectural Approach:**
@@ -403,6 +404,7 @@ The system architecture is designed to achieve specific quality attributes that 
 - **Clear Interfaces**: Standardized message protocols and component interfaces
 - **Documentation**: Comprehensive architectural documentation and code comments
 - **Consistent Patterns**: Uniform use of design patterns throughout the system
+- **Structured Logging**: Structlog provides consistent logging patterns and debugging capabilities across all components
 
 **Extensibility:**
 - **Plugin Architecture**: Easy addition of new tools and capabilities
@@ -1020,6 +1022,17 @@ The multi-agent system is built on a foundation of modern Python frameworks and 
 - **Usage**: State validation, message validation, configuration validation
 - **Benefits**: Ensures data integrity, catches errors early, improves system reliability
 
+**Structlog: Structured Logging and Observability**
+- **Purpose**: Structured logging framework for comprehensive observability and traceability
+- **Key Features**:
+  - Structured JSON logging with correlation ID support
+  - Configurable log levels and output formats
+  - Context-aware logging with automatic field injection
+  - Performance monitoring and metrics collection
+  - Security-conscious design with sensitive data filtering
+- **Usage**: Entry point logging, multi-agent system logging, correlation-based tracing
+- **Benefits**: Enables complete traceability, rapid debugging, and operational monitoring
+
 **Python 3.10+: Runtime Environment and Language Features**
 - **Purpose**: Runtime environment and language features
 - **Key Features**:
@@ -1066,7 +1079,7 @@ The system integrates with OpenAI's large language models to provide reasoning, 
 
 ### 4.3 External Tools and Integration
 
-The system integrates with a comprehensive set of external tools and services to provide research, calculation, and information processing capabilities.
+The system integrates a comprehensive set of external tools and services to provide research, calculation, and information processing capabilities with the ReAct agents.
 
 **Research Tools:**
 - **Web Search**: Tavily search API for comprehensive web search capabilities
@@ -1730,26 +1743,47 @@ The system provides specific consistency guarantees:
 **Prerequisites**: Sections 1, 2, 3, 4, 5 (Introduction, Architecture Principles, Core Components, Technology Stack, State Management)  
 **Dependencies**: Referenced by Sections 7, 8
 
-### 6.1 Dynamic Configuration
+### 6.1 Configuration System
 
-The system supports dynamic configuration to enable flexible deployment, agent customization, and environment-specific settings.
+The system uses a centralized configuration system that specifies parameters and system prompts for agents across the entire graph. Configuration is constructed at runtime by the entry point and consumed by the multi-agent system factory to configure graph compilation.
 
-**Configuration Sources and Hierarchy:**
-- **Environment Variables**: Used for sensitive data (API keys, secrets) and environment-specific overrides.
-- **Configuration Files**: YAML/JSON files for default and project-wide settings.
-- **Runtime Arguments**: Command-line or runtime parameters for batch jobs and overrides.
-- **Defaults**: Hardcoded defaults for all required settings to ensure safe operation.
+**Configuration Definition:**
+- **Purpose**: Specifies configuration parameters and system prompts for agents for the entire graph
+- **Scope**: Configures specific parameters of the graph that must be set before graph compilation
+- **Values**: Agent-specific retry limits, LLM temperatures for specific agents, and agent system prompts
 
-**Configuration Injection:**
-- **Factory Pattern**: All configuration is injected at graph/agent creation time via the factory.
-- **Agent-Specific Settings**: Each agent receives only the configuration relevant to its role (e.g., retry limits, prompt versions).
-- **Validation**: All configuration is validated using Pydantic schemas before use.
-- **Override Mechanisms**: Environment variables and runtime arguments override file-based and default settings.
+**Configuration Usage:**
+- **Runtime Construction**: Configuration is constructed at runtime of the entry point
+- **Factory Consumption**: Multi-agent system factory consumes configuration to assign retry limits, LLM temperatures, and agent system prompts to the graph definition before compilation
 
-**Configuration Management Best Practices:**
-- **Separation of Concerns**: Configuration is kept separate from code logic.
-- **Versioning**: Configuration files are version-controlled for reproducibility.
-- **Error Handling**: Invalid or missing configuration triggers clear error messages and safe fallback.
+**Configuration Supply:**
+- **Entry Point Definition**: Configuration is defined in the entry point script
+- **Hard-coded Values**: Retry limits and temperatures are hard-coded specified in the entry point script
+- **File-based Prompts**: System prompts are loaded from external files
+
+**Configuration Format:**
+- **Structure**: JSON or Python dictionaries with the following structure:
+  ```python
+  config = {
+      "agent_retry_limits": dict[str, int],
+      "llm_temperatures": dict[str, float], 
+      "system_prompts": dict[str, str]
+  }
+  ```
+- **Agent Retry Limits Keys**: planner, researcher, expert
+- **LLM Temperatures Keys**: planner, researcher, expert, critic, finalizer
+- **System Prompts Keys**: planner, researcher, expert, finalizer, critic_planner, critic_researcher, critic_expert
+
+**Configuration Validation:**
+- **Required Keys**: config must contain agent_retry_limits, llm_temperatures, system_prompts
+- **Sub-dictionary Keys**: Only allowed values are accepted for each sub-dictionary
+- **Type Checking**: Correct sub-dictionary values are type checked for validation
+
+**Configuration Management:**
+- **No Versioning**: There is no versioning or management system for configuration
+- **Future Considerations**: Versioning and management may be considered in future iterations
+- **Isolation**: Configuration is totally isolated from environment variables
+- **No CLI Arguments**: Entry point script does not accept CLI arguments for configuration
 
 
 ### 6.2 Factory Pattern Architecture
@@ -1757,19 +1791,19 @@ The system supports dynamic configuration to enable flexible deployment, agent c
 The system uses a factory pattern to dynamically construct the multi-agent workflow graph and inject configuration and prompts.
 
 **Factory Function Responsibilities:**
-- **Configuration Processing**: Processes configuration contents supplied by entry point and sets appropriate values in the graph
-- **Graph Construction**: Builds the main graph and all subgraphs (Researcher, Expert) based on processed configuration
+- **Configuration Assignment**: Assigns retry limits, LLM temperatures, and agent system prompts to the graph definition from supplied configuration
+- **Graph Construction**: Builds the main graph and all subgraphs (Researcher, Expert) based on assigned configuration
 - **Agent Instantiation**: Creates each agent node with injected configuration and prompt
 - **Prompt Injection**: Loads and injects the correct prompt for each agent, including critic variants, when building the graph
 - **Tool Binding**: Binds the correct set of tools to each agent based on configuration
 - **Validation**: Ensures all required configuration and prompts are present and valid
 
 **Dynamic Graph Creation Flow:**
-1. **Entry Point**: Main script loads configuration and prompts
+1. **Entry Point**: Main script constructs configuration and loads prompts
 2. **Configuration Supply**: Entry point supplies configuration and prompts to factory function
 3. **Factory Call**: Passes configuration and prompt objects to the factory function
-4. **Configuration Processing**: Factory processes configuration contents and sets appropriate values
-5. **Graph Assembly**: Factory creates all agent nodes, subgraphs, and edges based on processed configuration
+4. **Configuration Assignment**: Factory assigns retry limits, temperatures, and prompts to graph definition
+5. **Graph Assembly**: Factory creates all agent nodes, subgraphs, and edges based on assigned configuration
 6. **Prompt Injection**: Prompts are injected into agents when building the graph
 7. **Graph Compilation**: Returns a fully configured, ready-to-run workflow graph
 8. **Single Compilation**: Graph is compiled once and reused for all questions
@@ -1835,32 +1869,28 @@ graph TB
 
 Prompt management is critical for agent behavior, quality, and flexibility.
 
-**Prompt Loading and Injection:**
-- **Entry Point Supply**: Prompts are loaded by the entry point from external files or configuration objects
-- **Factory Injection**: Factory injects prompts into agents when building and compiling the graph
-- **Template Support**: Prompts can use templates with variables for dynamic content
-- **Versioning**: Multiple prompt versions can be maintained for experimentation
-- **Validation**: Prompts are checked for non-emptiness and basic format before injection
-
-**Runtime Prompt Usage:**
-- **Entry Point Loading**: Entry point is supplied prompts from external sources and supplies them to factory
-- **Factory Injection**: Factory injects prompts into agents at creation time during graph building
-- **Contextual Prompts**: Critic agent receives different prompts depending on workflow step (planner, researcher, expert)
-- **Prompt Updates**: Prompts can be updated without code changes, supporting rapid iteration
+**Prompt Management:**
+- **Loading**: Entry point loads prompts from external files
+- **Supply**: Entry point supplies prompts to factory
+- **Injection**: Factory injects prompts into agents during graph building
+- **Contextual Usage**: Critic agent receives different prompts depending on workflow step (planner, researcher, expert)
+- **Updates**: Prompts can be updated without code changes by modifying external files and then using the multi-agent system factory to create the updated graph
+- **Validation**: Prompts are checked for non-emptiness
 
 **Prompt Management Best Practices:**
-- **Separation**: Prompts are kept separate from code for maintainability.
-- **Testing**: Prompt changes are tested for quality and safety.
-- **Documentation**: Each prompt is documented for purpose and expected behavior.
+- **Separation**: Prompts are kept separate from code for maintainability
+
+**Future Considerations**
+- **Proper Prompt Management**: Proper prompt management system is needed for versioning, templating, and prompt variations.
 
 
 ### 6.4 Entry Point and Batch Processing
 
-The main entry point script is responsible for initializing the system, loading configuration, and managing batch processing.
+The main entry point script is responsible for initializing the system, constructing configuration, and managing batch processing.
 
 **Entry Point Responsibilities:**
-- **Argument Handling**: Parses command-line arguments for input/output files and configuration overrides
-- **Configuration Loading**: Loads and validates all configuration and prompts
+- **Configuration Construction**: Constructs configuration with hard-coded retry limits and temperatures
+- **Prompt Loading**: Loads system prompts from external files
 - **Configuration Supply**: Supplies graph configuration and prompts to the multi-agent system factory
 - **Graph Compilation**: Compiles the workflow graph once during system initialization
 - **Graph Invocation**: Invokes the compiled graph once per question with isolated graph state
@@ -1878,18 +1908,17 @@ The main entry point script is responsible for initializing the system, loading 
 - **Output Extraction**: Final answer and reasoning trace extracted from returned graph state
 - **Batch Results Storage**: All extracted outputs stored in consolidated batch result files
 - **Resource Management**: Manages memory and cleans up resources between questions
-- **Performance**: Optimized for efficient batch execution with isolated per-question processing
 
 
 **Related Sections**: Sections 7, 8 (referenced by error handling and decisions sections)
 
-**Section Summary**: This section covers the configuration management, factory pattern implementation, prompt management, and entry point/batch processing capabilities of the multi-agent system, describing how the system is configured, instantiated, and deployed for flexible and robust operation.
+**Section Summary**: This section covers the configuration system, factory pattern implementation, prompt management, and entry point/batch processing capabilities of the multi-agent system, describing how the system is configured, instantiated, and deployed for robust operation.
 
 **Key Takeaways**:
-- Dynamic configuration enables flexible deployment and agent customization
-- Factory pattern supports modular, maintainable, and testable graph construction
-- Entry point supplies configuration and prompts to factory for injection during graph building
-- Prompt management allows rapid iteration and quality control of agent behavior
+- Centralized configuration system specifies parameters and system prompts for the entire graph
+- Configuration is constructed at runtime by entry point and consumed by factory for graph compilation
+- Factory pattern assigns retry limits, temperatures, and prompts to graph definition before compilation
+- Entry point constructs configuration with hard-coded values and loads prompts from external files
 - Single graph compilation with per-question invocation ensures efficient batch processing
 - Complete question isolation prevents state crossing and maintains privacy
 - Clean output interface with graph state return and entry point extraction
@@ -1935,20 +1964,18 @@ The system implements a robust error handling architecture to ensure reliability
 **High-Level Error Handling Strategy:**
 - **Centralized Error Management:** The orchestrator coordinates error detection, propagation, and recovery across all agents and workflow steps.
 - **Error Categorization:** Errors are classified as API errors, validation errors, runtime errors, or tool-specific errors.
-- **Error Propagation:** Errors are propagated through the workflow state and communicated to relevant agents and the finalizer.
 - **Fail-Fast Error Handling:** When critical errors occur, the system terminates immediately with clear failure reasons.
-- **Graceful Retry Failure:** When retry limits are exceeded, orchestrator sets finalizer as next step and instructs finalizer to return specific final answer with failing agent attribution in reasoning trace.
 
 **Error Detection and Reporting:**
-- **Validation Errors:** Detected during state updates, configuration loading, and prompt injection.
-- **Agent Errors:** Each agent reports errors encountered during execution, including tool failures and invalid outputs.
-- **Tool Errors:** Tool integration includes error handling for API failures, timeouts, and invalid responses.
-- **Error Logging:** All errors are logged with detailed context for debugging and monitoring.
+- **Comprehensive Error Detection:** All exceptions and errors are detected and logged regardless of source (agents, tools, validation, runtime, etc.)
+- **Context-Rich Error Logging:** Each error is logged with appropriate context including component identification, workflow state, correlation ID, and relevant details
+- **Error Details Capture:** Error logs include exception type, message, stack trace, and any relevant state information for debugging
 
-**Error Recovery and Resilience:**
-- **Retry Mechanisms:** Automatic retries for transient errors, with agent-specific retry limits.
-- **Fallbacks:** Use of alternative tools or default behaviors when primary actions fail.
-- **State Repair:** State recovery mechanisms attempt to restore valid workflow state after errors.
+**Error Logging Integration:**
+- **Structured Error Logging:** All errors are logged using the Structlog framework described in section 7.5 with correlation IDs for traceability
+- **Error Context Capture:** Error logs include component identification, workflow state, correlation ID, and error severity level
+- **Error Correlation:** Error logs are linked to specific workflow states and agent actions for comprehensive debugging
+- **Security-Conscious Error Logging:** Error details are logged without exposing sensitive data or internal system information
 
 **Required Diagrams**: 
 - **Quality Control & Error Handling Diagram** - Critic agent decision-making and error handling
@@ -2002,33 +2029,44 @@ graph TB
     class ErrorDetect,RetryLogic,FailFast,GracefulFail error
 ```
 
-### 7.2 Agent-Specific Critic Rejection Retry Logic
+### 7.2 Quality Control and Retry Logic
 
-The system uses agent-specific retry logic to improve robustness and quality when critic rejects agent work, while preventing infinite retry loops.
+The system implements a comprehensive quality control system with agent-specific retry logic to ensure robust operation and continuous improvement through critic-based feedback loops.
 
-**Retry Configuration:**
+**Critic Agent Quality Control:**
+- **Dynamic Prompts:** The critic agent uses different prompts for planner, researcher, and expert outputs.
+- **Decision Making:** The critic decides to approve or reject outputs, providing constructive feedback for improvement.
+- **Quality Assessment:** Critic checks for completeness, correctness, and adherence to requirements using predefined criteria for each agent type.
+- **No History Retention:** Critic agent does not retain conversation history, ensuring unbiased feedback each time.
+
+**Agent-Specific Retry Logic:**
 - **Role-Based Limits:** Each agent type has configurable retry limits when critic rejects their work (planner: 2-3, researcher: 5-7, expert: 4-6).
-- **Configuration Injection:** Retry limits are injected via configuration and can be overridden per environment.
-
-**Retry Counter Management:**
 - **Independent Counters:** Each agent maintains its own retry counter, tracked in the workflow state.
-- **Increment on Critic Rejection:** The retry counter for the specific agent that was rejected gets incremented (e.g., if planner is rejected, planner's retry counter increments).
+- **Increment on Critic Rejection:** The retry counter for the specific agent that was rejected gets incremented.
 - **Limit Enforcement:** When retry limits are reached, the system proceeds to the finalizer with failure attribution.
 
-**Retry Patterns:**
+**Quality Control Patterns:**
+- **Feedback Loops:** Iterative improvement through repeated critic review and agent retries.
 - **Immediate Retry:** Simple retry without delays for repeated critic rejections.
 - **Graceful Critic Rejection Failure:** If retries are exhausted, orchestrator sets finalizer as next step and instructs finalizer to return specific final answer with failing agent attribution in reasoning trace.
+- **Traceability:** All critic decisions and feedback are logged for audit and improvement.
 
 **Required Diagrams**: 
-- **Retry Logic Architecture Diagram** - Agent-specific retry configuration and management
+- **Quality Control & Retry Logic Architecture Diagram** - Critic agent decision-making and agent-specific retry configuration
 
 ```mermaid
 graph TB
-    subgraph "Retry Logic Architecture"
+    subgraph "Quality Control & Retry Logic"
         subgraph "Agents with Retry Limits"
             P[Planner Agent<br/>Retry Limit: 2-3]
             R[Researcher Agent<br/>Retry Limit: 5-7]
             E[Expert Agent<br/>Retry Limit: 4-6]
+        end
+        
+        subgraph "Critic Agent"
+            C[Critic Agent]
+            Decision[Decision Logic]
+            Feedback[Feedback Generation]
         end
         
         subgraph "Retry Management"
@@ -2037,12 +2075,9 @@ graph TB
             RetryState[Retry State]
         end
         
-        subgraph "Critic Decisions"
+        subgraph "Quality Control"
             Approve[Approve]
             Reject[Reject]
-        end
-        
-        subgraph "Retry Actions"
             Increment[Increment Counter]
             CheckLimit[Check Limit]
             Retry[Retry Action]
@@ -2050,11 +2085,15 @@ graph TB
         end
     end
     
-    P --> Reject
-    R --> Reject
-    E --> Reject
+    P --> C
+    R --> C
+    E --> C
     
-    Reject --> Increment
+    C --> Decision
+    Decision -->|Approve| Feedback
+    Decision -->|Reject| Feedback
+    
+    Feedback -->|Reject| Increment
     Increment --> RetryCounter
     RetryCounter --> CheckLimit
     CheckLimit --> RetryLimit
@@ -2070,55 +2109,184 @@ graph TB
     RetryState -->|Reset| RetryCounter
     
     classDef agent fill:#e3f2fd
-    classDef retry fill:#f3e5f5
-    classDef decision fill:#e8f5e8
-    classDef action fill:#fff3e0
+    classDef critic fill:#f3e5f5
+    classDef retry fill:#e8f5e8
+    classDef quality fill:#fff3e0
     
     class P,R,E agent
+    class C,Decision,Feedback critic
     class RetryCounter,RetryLimit,RetryState retry
-    class Approve,Reject decision
-    class Increment,CheckLimit,Retry,GracefulFail action
+    class Approve,Reject,Increment,CheckLimit,Retry,GracefulFail quality
 ```
 
-### 7.3 Quality Control System
+### 7.3 Logging & Observability
 
-Quality assurance is integrated at every workflow step through the critic agent and feedback loops.
+**Prerequisites**: Sections 7.1-7.2 (Error Handling & Quality Assurance)  
+**Dependencies**: Referenced by Section 8 (Architectural Decisions)
 
-**Critic Agent Integration:**
-- **Dynamic Prompts:** The critic agent uses different prompts for planner, researcher, and expert outputs.
-- **Decision Making:** The critic decides to approve or reject outputs, providing constructive feedback for improvement.
-- **Iterative Feedback:** Agents can retry and improve outputs based on critic feedback, up to their retry limit.
+#### 7.3.1 Logging Strategy Overview
 
-**Quality Assessment Criteria:**
-- **Output Validation:** Critic checks for completeness, correctness, and adherence to requirements.
-- **Evaluation Metrics:** Quality is assessed using predefined criteria and metrics for each agent type.
-- **Traceability:** All critic decisions and feedback are logged for audit and improvement.
+The system implements a comprehensive logging strategy to establish traceability and observability across the multi-agent workflow. This strategy enables operational monitoring, debugging, and performance analysis while maintaining security and privacy standards.
 
-**Quality Control Patterns:**
-- **Feedback Loops:** Iterative improvement through repeated critic review and agent retries.
-- **No History Retention:** Critic agent does not retain conversation history, ensuring unbiased feedback each time.
+**Logging Architecture Principles:**
+- **Correlation-Based Tracing**: Each question processing run is assigned a unique correlation ID that links all log entries across the workflow
+- **Hierarchical Organization**: Logs are organized by run, with separate directories for entry point and multi-agent system components
+- **Security-Conscious Design**: Logging avoids sensitive data exposure while capturing sufficient context for debugging and monitoring
+- **Standardized Format**: Consistent log message structure with standardized prefixes and separated variable values
+- **Comprehensive Coverage**: All significant system events, state changes, and error conditions are logged
 
-**Required Diagrams**: None (covered by Quality Control & Error Handling Diagram in 7.1)
+**Observability Goals:**
+- **Request Tracing**: Complete visibility into question processing from entry point through final answer generation
+- **Performance Monitoring**: Execution time tracking for agents, tools, and workflow steps
+- **Error Correlation**: Linking errors to specific workflow states and agent actions
+- **Quality Metrics**: Tracking critic decisions, retry patterns, and success rates
+- **Operational Insights**: System health monitoring and capacity planning
 
-### 7.4 System Resilience
+#### 7.3.2 Logging Architecture Components
 
-The architecture is designed for resilience, ensuring the system continues to function and provide value even in the presence of errors or partial failures.
+**Entry Point Logging Layer:**
+- **Purpose**: Captures batch processing lifecycle, configuration loading, and entry point errors
+- **Scope**: Question processing initiation, configuration validation, batch progress tracking
+- **Log Levels**: INFO for normal operations, ERROR for failures, WARN for potential issues
+- **Key Events**: Batch start/completion, question processing start/completion, configuration loading, error conditions
 
-**Resilience Strategies:**
-- **Fail-Fast Error Handling:** The system terminates immediately when critical errors occur.
-- **Graceful Critic Rejection Failure:** When critic rejection retry limits are exceeded, orchestrator sets finalizer as next step and instructs finalizer to return specific final answer with failing agent attribution in reasoning trace.
-- **Error Recovery:** State repair and retry mechanisms attempt to recover from transient and recoverable errors.
-- **Fault Tolerance:** The workflow is robust to individual agent or tool failures, isolating failures and preventing system-wide crashes.
-- **Monitoring and Alerting:** Errors and failures are logged and can trigger alerts for operational monitoring.
+**Multi-Agent System Logging Layer:**
+- **Purpose**: Tracks workflow execution, agent interactions, and system state changes
+- **Scope**: Graph state transitions, agent execution, critic decisions, tool usage, error handling
+- **Log Levels**: INFO for workflow progression, ERROR for failures, WARN for retries and critic rejections
+- **Key Events**: Agent execution start/completion, state transitions, critic decisions, tool invocations, error conditions
 
-**System Health and Monitoring:**
-- **Structured Logging:** All errors, retries, and critic feedback are logged with context.
-- **Health Checks:** Optional health check endpoints or scripts can be used for deployment monitoring.
-- **Metrics Collection:** Retry rates, error rates, and critic rejection rates are tracked for quality assurance.
+**Correlation ID Management:**
+- **Generation**: Unique correlation ID created at entry point for each question processing run
+- **Propagation**: Correlation ID passed through entire workflow and included in all log entries
+- **Storage**: Correlation ID stored in dedicated file for easy lookup and trace reconstruction
+- **Lifetime**: Correlation ID persists for entire question processing lifecycle
 
-**Required Diagrams**: None (covered by Quality Control & Error Handling Diagram in 7.1)
+**Log Organization Structure:**
+- **Run-Based Organization**: Each processing run creates dedicated directory with correlation ID
+- **Component Separation**: Separate log files for entry point and multi-agent system components
+- **Summary Documentation**: Run summary file containing key metrics and execution statistics
+- **Hierarchical Context**: Parent-child relationships between runs, questions, and workflow steps
 
-### 7.5 Testing Strategies
+#### 7.3.3 Logging Content Strategy
+
+**Event Categorization:**
+- **Workflow Events**: State transitions, step completions, workflow progression
+- **Agent Events**: Execution start/completion, tool usage, output generation
+- **Quality Events**: Critic decisions, retry attempts, feedback generation
+- **Error Events**: Failures, exceptions, error conditions with context (see section 7.1 for error handling details)
+- **Performance Events**: Execution times, resource usage, API call metrics
+
+**Context Information:**
+- **Correlation ID**: Links all events within a single question processing run
+- **Component Identification**: Agent name, workflow step, tool name for event attribution
+- **State Information**: Current workflow state, step progression, retry counts
+- **Performance Metrics**: Execution times, success rates, error frequencies
+- **Security Context**: Sanitized configuration, API endpoints, error types
+
+**Error Logging Architecture:**
+- **Error Event Capture**: All errors from section 7.1 error handling are captured as structured log events
+- **Error Context Enrichment**: Error logs include correlation ID, component, workflow state, and error details
+- **Error Traceability**: Error logs are linked to specific workflow steps and agent actions for debugging
+- **Error Analysis Support**: Error logs support correlation-based queries and trend analysis for operational monitoring
+
+**Security and Privacy Considerations:**
+- **Sensitive Data Exclusion**: No API keys, passwords, or personal information in logs
+- **Sanitized Configuration**: Log configuration structure without exposing sensitive values
+- **Error Context**: Include error types and components without exposing internal data
+- **Access Control**: Log files stored with appropriate permissions and access controls
+
+#### 7.3.4 Observability Integration
+
+**Performance Monitoring:**
+- **Agent Execution Times**: Track individual agent performance and identify bottlenecks
+- **Tool Usage Metrics**: Monitor external API usage, success rates, and error patterns
+- **Workflow Efficiency**: Measure overall processing time and step-by-step performance
+- **Resource Utilization**: Track memory usage, API call frequency, and system capacity
+
+**Quality Assurance Integration:**
+- **Critic Decision Tracking**: Log approval/rejection rates and feedback patterns
+- **Retry Pattern Analysis**: Monitor retry frequency and success rates by agent type
+- **Error Correlation**: Link errors to specific agents, tools, or workflow states
+- **Success Rate Monitoring**: Track overall system success rates and failure patterns
+
+**Operational Monitoring:**
+- **System Health**: Monitor overall system performance and identify degradation patterns
+- **Capacity Planning**: Track resource usage and identify scaling requirements
+- **Error Trends**: Analyze error patterns and identify systemic issues
+- **Performance Optimization**: Identify bottlenecks and optimization opportunities
+
+#### 7.3.5 Log Management and Analysis
+
+**Storage and Retention:**
+- **Local Storage**: Logs stored in organized directory structure with run-based organization
+
+
+**Required Diagrams**: 
+- **Logging Architecture Diagram** - Logging components, correlation flow, and storage organization
+
+```mermaid
+graph TB
+    subgraph "Logging Architecture"
+        subgraph "Entry Point"
+            EP[Entry Point]
+            EPL[Entry Point Logger]
+            EPID[Correlation ID Generator]
+        end
+        
+        subgraph "Multi-Agent System"
+            MAS[Multi-Agent System]
+            MASL[Multi-Agent Logger]
+            Orchestrator[Orchestrator]
+            Agents[Agents]
+        end
+        
+        subgraph "Log Storage"
+            RunDir[Run Directory]
+            EntryLog[Entry Point Log]
+            MASLog[Multi-Agent Log]
+            Summary[Run Summary]
+            CorrID[Correlation ID File]
+        end
+        
+        subgraph "Observability"
+            Tracing[Request Tracing]
+            Metrics[Performance Metrics]
+            Monitoring[System Monitoring]
+        end
+    end
+    
+    EP --> EPID
+    EPID --> EPL
+    EPL --> EntryLog
+    
+    MAS --> MASL
+    MASL --> MASLog
+    
+    Orchestrator --> MASL
+    Agents --> MASL
+    
+    EntryLog --> RunDir
+    MASLog --> RunDir
+    Summary --> RunDir
+    CorrID --> RunDir
+    
+    RunDir --> Tracing
+    RunDir --> Metrics
+    RunDir --> Monitoring
+    
+    classDef component fill:#e3f2fd
+    classDef logger fill:#f3e5f5
+    classDef storage fill:#e8f5e8
+    classDef observability fill:#fff3e0
+    
+    class EP,MAS,Orchestrator,Agents component
+    class EPL,MASL,EPID logger
+    class EntryLog,MASLog,Summary,CorrID,RunDir storage
+    class Tracing,Metrics,Monitoring observability
+```
+
+### 7.4 Testing Strategies
 
 Testing is a first-class concern, with architecture designed for testability at all levels.
 
@@ -2137,18 +2305,18 @@ Testing is a first-class concern, with architecture designed for testability at 
 - **Test Data Management:** Test data and fixtures are version-controlled and reusable.
 - **Coverage Metrics:** Test coverage is tracked to ensure quality.
 
+**Required Diagrams**: None (text-based section)
 
-**Related Sections:** Section 8 (referenced by decisions section)
+**Related Sections**: Section 8 (referenced by architectural decisions section)
 
 **Section Summary:**
-This section covers the error handling, retry logic, quality assurance, system resilience, and testing strategies of the multi-agent system, describing how the system maintains reliability, quality, and robustness in the face of errors and failures.
+This section covers the error handling, retry logic, quality assurance, testing strategies, and logging observability of the multi-agent system, describing how the system maintains reliability, quality, and robustness while providing comprehensive traceability and monitoring capabilities.
 
 **Key Takeaways:**
 - Comprehensive error handling and critic rejection retry logic ensure system reliability with fail-fast error handling and graceful critic rejection failures
 - Critic agent and feedback loops provide integrated quality control at every workflow step
-- System resilience strategies enable robust operation and clear failure attribution
 - Testing strategies and infrastructure support maintainable, high-quality code and architecture
-
+- Correlation-based logging provides complete traceability and observability across the multi-agent workflow
 ---
 
 ## 8. Architectural Decisions & Future Considerations
@@ -2182,6 +2350,15 @@ The architecture is shaped by several foundational design decisions, each made t
 - Chose a hard-coded workflow for predictability, easier debugging, and clear state transitions.
 - Dynamic workflows were considered but deferred for future extensibility.
 
+**Structured Logging vs. Unstructured Logging:**
+- **Decision**: Structured logging using Structlog for comprehensive observability
+- **Rationale**: Enables correlation-based tracing, JSON formatting, and security-conscious logging
+- **Alternative Considered**: Standard Python logging with manual correlation ID management
+- **Rejection Reason**: Would require significant custom implementation for structured logging and correlation ID propagation
+- **Benefits**: Complete traceability, rapid debugging, performance insights, quality monitoring, security compliance, and operational excellence
+- **Analysis Capabilities**: Correlation-based queries, performance analysis, error analysis, and trend analysis enable comprehensive system insights
+- **Operational Benefits**: Debugging support, performance optimization, and quality improvement through critic decision analysis
+
 
 ### 8.2 Alternatives Considered
 
@@ -2201,6 +2378,10 @@ Several alternative architectural approaches were evaluated and rejected, with r
 
 **Alternative Tool Integration Patterns:**
 - Explored plugin-based tool loading but prioritized explicit tool binding for safety and traceability.
+
+**Alternative Logging Approaches:**
+- Considered standard Python logging but chose Structlog for structured JSON output and correlation ID support.
+- Evaluated custom logging implementation but prioritized proven framework for maintainability and consistency.
 
 
 ### 8.3 Trade-offs and Risks
@@ -2260,6 +2441,7 @@ The architecture is designed to support future evolution and adaptation as requi
 - **Retry Logic:** Mechanism for re-attempting failed agent actions when critic rejects their work, up to a configured limit.
 - **Fail-Fast Termination:** System behavior that terminates immediately with clear failure reasons when critical errors occur.
 - **Graceful Critic Rejection Failure:** System behavior where orchestrator sets finalizer as next step and instructs finalizer to return specific final answer with failing agent attribution in reasoning trace when critic rejection retry limits are exceeded.
+- **Structlog:** Structured logging framework providing JSON-formatted logs with correlation ID support and context-aware logging capabilities.
 
 **References:**
 - **Source Code:** See project repository for implementation details.

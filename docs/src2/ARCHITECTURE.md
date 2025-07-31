@@ -249,7 +249,7 @@ graph LR
     class UserInterface interface
 ```
 
-**Diagram 1.2a: Level 1 System Context Diagram -- Multi-Agent System** - Detailed view showing internal components and external services
+**Diagram 1.2: Level 1 System Context Diagram -- Multi-Agent System** - Detailed view showing internal components and external services
 ```mermaid
 graph TB
     %% Top: User Interface
@@ -322,7 +322,7 @@ graph TB
     linkStyle default stroke:#ffffff,stroke-width:2px
 ```
 
-**Diagram 1.2b: Level 1 System Context Diagram -- Input/Output and Entry Point System** - Detailed view showing internal components and external services
+**Diagram 1.3: Level 1 System Context Diagram -- Input/Output and Entry Point System** - Detailed view showing internal components and external services
 ```mermaid
 graph TB
     %% Top: Input and Output Files
@@ -1799,55 +1799,75 @@ The system uses a factory pattern to dynamically construct the multi-agent workf
 - **Fallbacks**: Defaults are used if optional configuration is missing.
 
 **Required Diagrams**: 
-- **Diagram 6.1: Configuration & Factory Pattern Diagram** - Entry point flow and factory pattern implementation
+- **Diagram 6.1: Configuration & Factory Pattern Diagram** - Factory pattern implementation and configuration flow
 
 ```mermaid
 graph TB
-    subgraph "Entry Point & Configuration"
-        EP[Entry Point Script]
-        Config[Configuration Files]
-        Prompts[Prompt Files]
+    %% Configuration Inputs
+    subgraph ConfigInputs["Configuration Inputs"]
+        RetryLimits[Retry Limits<br/>Hard-coded values]
+        Temperatures[Temperature Settings<br/>Per agent type]
+        Models[Model Selection<br/>GPT-4o vs GPT-4o-mini]
     end
     
-    subgraph "Factory Pattern"
+    %% Prompt Inputs
+    subgraph PromptInputs["Prompt Inputs"]
+        SystemPrompts[System Prompts<br/>External files]
+        AgentPrompts[Agent Prompts<br/>Per agent type]
+        CriticPrompts[Critic Prompts<br/>Per workflow step]
+    end
+    
+    %% Factory Pattern Implementation
+    subgraph FactoryPattern["Factory Pattern Implementation"]
+        EntryPoint[Entry Point Script]
+        ConfigBuilder[Configuration Builder]
+        PromptLoader[Prompt Loader]
         Factory[Factory Function]
-        Validation[Configuration Validation]
         GraphBuilder[Graph Builder]
-        AgentCreator[Agent Creator]
-        PromptInjector[Prompt Injector]
     end
     
-    subgraph "Multi-Agent System"
-        Graph[Workflow Graph]
-        Agents[Agent Instances]
-        InjectedPrompts[Injected Prompts]
+    %% Graph Building Process
+    subgraph GraphBuilding["Graph Building Process"]
+        AgentCreation[Agent Creation<br/>with injected LLM & System Prompt]
+        StateDefaults[Default Graph State<br/>with retry limits]
+        GraphAssembly[Graph Assembly<br/>Nodes, Edges, Subgraphs]
     end
     
-    EP --> Config
-    EP --> Prompts
+    %% Output Components
+    subgraph OutputComponents["Output Components"]
+        CompiledGraph[Compiled Graph Instance<br/>Ready for execution]
+    end
     
-    Config --> Factory
-    Prompts --> Factory
+    %% Factory Pattern Flow
+    ConfigInputs --> EntryPoint
+    PromptInputs --> EntryPoint
     
-    Factory --> Validation
-    Validation --> GraphBuilder
-    GraphBuilder --> AgentCreator
-    AgentCreator --> PromptInjector
+    EntryPoint --> ConfigBuilder
+    EntryPoint --> PromptLoader
     
-    GraphBuilder --> Graph
-    AgentCreator --> Agents
-    PromptInjector --> InjectedPrompts
+    ConfigBuilder --> Factory
+    PromptLoader --> Factory
     
-    Graph --> Agents
-    Agents --> InjectedPrompts
+    Factory --> GraphBuilder
     
-    classDef entry fill:#e3f2fd
-    classDef factory fill:#f3e5f5
-    classDef system fill:#e8f5e8
+    GraphBuilder --> AgentCreation
+    GraphBuilder --> StateDefaults
+    GraphBuilder --> GraphAssembly
     
-    class EP,Config,Prompts entry
-    class Factory,Validation,GraphBuilder,AgentCreator,PromptInjector factory
-    class Graph,Agents,InjectedPrompts system
+    AgentCreation --> CompiledGraph
+    StateDefaults --> CompiledGraph
+    GraphAssembly --> CompiledGraph
+    
+    %% Styling - Oceanic/Dark Theme Friendly
+    classDef config fill:#7FFFD4,stroke:#00B0FF,stroke-width:2px,color:#000000
+    classDef prompts fill:#A8E2DC,stroke:#9CD1D0,stroke-width:2px,color:#000000
+    classDef factory fill:#00C3FF,stroke:#0B00FF,stroke-width:2px,color:#ffffff
+    classDef output fill:#00F6FF,stroke:#00FFC3,stroke-width:2px,color:#000000
+    
+    class RetryLimits,Temperatures,Models config
+    class SystemPrompts,AgentPrompts,CriticPrompts prompts
+    class EntryPoint,ConfigBuilder,PromptLoader,Factory,GraphBuilder factory
+    class AgentCreation,StateDefaults,GraphAssembly,CompiledGraph output
 ```
 
 ### 6.3 Prompt Management
@@ -1968,13 +1988,10 @@ The system implements a robust error handling architecture to ensure reliability
 ```mermaid
 graph TB
     subgraph "Technical Error Handling"
-        subgraph "System Components"
-            P[Planner Agent]
-            R[Researcher Agent]
-            E[Expert Agent]
-            C[Critic Agent]
-            Tools[External Tools]
-        end
+            subgraph "System Components"
+        EntryPoint[Entry Point Script]
+        MultiAgentSystem[Multi-Agent System]
+    end
         
         subgraph "Error Detection"
             ErrorDetect[Error Detection]
@@ -1988,11 +2005,8 @@ graph TB
         end
     end
     
-    P --> ErrorDetect
-    R --> ErrorDetect
-    E --> ErrorDetect
-    C --> ErrorDetect
-    Tools --> ErrorDetect
+    EntryPoint --> ErrorDetect
+    MultiAgentSystem --> ErrorDetect
     
     ErrorDetect --> ErrorLog
     ErrorDetect --> ErrorContext
@@ -2000,11 +2014,12 @@ graph TB
     ErrorContext --> FailFast
     FailFast --> ErrorReport
     
-    classDef component fill:#e3f2fd
-    classDef error fill:#ffebee
-    classDef handling fill:#f3e5f5
+    %% Styling - Oceanic/Dark Theme Friendly
+    classDef component fill:#7FFFD4,stroke:#00B0FF,stroke-width:2px,color:#000000
+    classDef error fill:#FF6B6B,stroke:#FF5252,stroke-width:2px,color:#ffffff
+    classDef handling fill:#4ECDC4,stroke:#26A69A,stroke-width:2px,color:#000000
     
-    class P,R,E,C,Tools component
+    class EntryPoint,MultiAgentSystem component
     class ErrorDetect,ErrorLog,ErrorContext error
     class FailFast,ErrorReport handling
 ```
@@ -2035,68 +2050,63 @@ The system implements a comprehensive quality control system with agent-specific
 - **Diagram 7.2: Quality Control & Retry Logic Architecture Diagram** - Critic agent decision-making and agent-specific retry configuration
 
 ```mermaid
-graph TB
-    subgraph "Quality Control & Retry Logic"
-        subgraph "Agents with Retry Limits"
-            P[Planner Agent<br/>Retry Limit: 2-3]
-            R[Researcher Agent<br/>Retry Limit: 5-7]
-            E[Expert Agent<br/>Retry Limit: 4-6]
-        end
-        
-        subgraph "Critic Agent"
-            C[Critic Agent]
-            Decision[Decision Logic]
-            Feedback[Feedback Generation]
-        end
-        
-        subgraph "Retry Management"
-            RetryCounter[Retry Counter]
-            RetryLimit[Retry Limit]
-            RetryState[Retry State]
-        end
-        
-        subgraph "Quality Control"
-            Approve[Approve]
-            Reject[Reject]
-            Increment[Increment Counter]
-            CheckLimit[Check Limit]
-            Retry[Retry Action]
-            GracefulFail[Graceful Retry Failure]
-        end
+graph TD
+    Start([Agent Execution])
+    Agent["Agent<br/>Output"]
+    Critic["Critic Agent: Review"]
+    RenderDecision["Critic Agent: Render Decision"]
+    Feedback["Critic Agent: Feedback Generation"]
+    
+    CheckDecision["Orchestrator: 🔍 Check Critic Decision"]
+    Decision{Critic Decision}
+    UpdateCounter["Orchestrator: 📊 Update Retry Counter"]
+    CheckLimit["Orchestrator: ⚖️ Check Retry Limit"]
+    EnforceLimit["Orchestrator: 🚦 Enforce Retry Limit"]
+    
+    subgraph RetryState["Retry State Management"]
+        RetryCounter["🔢 Retry Counter"]
+        RetryLimit["📏 Retry Limit"]
     end
     
-    P --> C
-    R --> C
-    E --> C
+    Retry["Orchestrator: 🔄 Retry Action:<br>1. Provide critic feedback to agent.<br>2. Have agent retry task."]
+    GracefulFail["Orchestrator: ❌ Trigger Graceful Retry Failure"]
+    Success([Success])
+    GracefulFailure([Graceful Retry Failure Process])
     
-    C --> Decision
-    Decision -->|Approve| Feedback
-    Decision -->|Reject| Feedback
+    Start --> Agent
+    Agent --> Critic
+    Critic --> RenderDecision
+    RenderDecision --> Feedback
     
-    Feedback -->|Reject| Increment
-    Increment --> RetryCounter
-    RetryCounter --> CheckLimit
-    CheckLimit --> RetryLimit
+    Feedback --> CheckDecision
+    CheckDecision --> Decision
+    Decision -->|Approve| Success
+    Decision -->|Reject| UpdateCounter
+    UpdateCounter --> RetryCounter
+    RetryState --> CheckLimit
+    CheckLimit --> EnforceLimit
     
-    CheckLimit -->|Under Limit| Retry
-    CheckLimit -->|At Limit| GracefulFail
+    EnforceLimit -->|At or Under Limit| Retry
+    EnforceLimit -->|Exceed Limit| GracefulFail
     
-    Retry --> P
-    Retry --> R
-    Retry --> E
+    Retry --> Start
+    GracefulFail --> GracefulFailure
     
-    Approve --> RetryState
-    RetryState -->|Reset| RetryCounter
     
-    classDef agent fill:#e3f2fd
-    classDef critic fill:#f3e5f5
-    classDef retry fill:#e8f5e8
-    classDef quality fill:#fff3e0
+    %% Styling - Dark Theme Optimized with Better Contrast
+    classDef agent fill:#00D4AA,stroke:#00B894,stroke-width:2px,color:#000000
+    classDef critic fill:#FFB347,stroke:#FF8C00,stroke-width:2px,color:#000000
+    classDef orchestrator fill:#4ECDC4,stroke:#26A69A,stroke-width:2px,color:#000000
+    classDef retry fill:#FF6B6B,stroke:#FF5252,stroke-width:2px,color:#000000
+    classDef success fill:#A8E6CF,stroke:#7FB069,stroke-width:2px,color:#000000
+    classDef failure fill:#FF4757,stroke:#FF3838,stroke-width:2px,color:#000000
     
-    class P,R,E agent
-    class C,Decision,Feedback critic
-    class RetryCounter,RetryLimit,RetryState retry
-    class Approve,Reject,Increment,CheckLimit,Retry,GracefulFail quality
+    class Agent agent
+    class Critic,RenderDecision,Feedback,Decision critic
+    class CheckDecision,UpdateCounter,CheckLimit,EnforceLimit,Retry,GracefulFail orchestrator
+    class RetryCounter,RetryLimit retry
+    class Start,Success success
+    class GracefulFailure failure
 ```
 
 ### 7.3 Logging & Observability
@@ -2145,7 +2155,6 @@ The system implements a comprehensive logging strategy to establish traceability
 **Log Organization Structure:**
 - **Run-Based Organization**: Each processing run creates dedicated directory with correlation ID
 - **Component Separation**: Separate log files for entry point and multi-agent system components
-- **Summary Documentation**: Run summary file containing key metrics and execution statistics
 - **Hierarchical Context**: Parent-child relationships between runs, questions, and workflow steps
 
 #### 7.3.3 Logging Content Strategy
@@ -2176,104 +2185,94 @@ The system implements a comprehensive logging strategy to establish traceability
 - **Error Context**: Include error types and components without exposing internal data
 - **Access Control**: Log files stored with appropriate permissions and access controls
 
-#### 7.3.4 Observability Integration
+#### 7.3.4 Observability and Analysis
 
-**Performance Monitoring:**
-- **Agent Execution Times**: Track individual agent performance and identify bottlenecks
-- **Tool Usage Metrics**: Monitor external API usage, success rates, and error patterns
-- **Workflow Efficiency**: Measure overall processing time and step-by-step performance
-- **Resource Utilization**: Track memory usage, API call frequency, and system capacity
+**External Observability Platforms:**
+The logging infrastructure provides comprehensive log data that can be consumed by external observability and analysis platforms. These platforms are separate from the logging infrastructure and provide additional capabilities for monitoring, analysis, and visualization.
 
-**Quality Assurance Integration:**
-- **Critic Decision Tracking**: Log approval/rejection rates and feedback patterns
-- **Retry Pattern Analysis**: Monitor retry frequency and success rates by agent type
-- **Error Correlation**: Link errors to specific agents, tools, or workflow states
-- **Success Rate Monitoring**: Track overall system success rates and failure patterns
+**Log Data for Analysis:**
+The logging infrastructure generates structured log data that includes:
+- **Correlation IDs**: For linking events across the workflow
+- **Component Identification**: Agent names, workflow steps, tool names
+- **Performance Metrics**: Execution times, success rates, error frequencies
+- **Quality Metrics**: Critic decisions, retry patterns, success rates
+- **Error Context**: Error types, components, workflow states
 
-**Operational Monitoring:**
-- **System Health**: Monitor overall system performance and identify degradation patterns
-- **Capacity Planning**: Track resource usage and identify scaling requirements
-- **Error Trends**: Analyze error patterns and identify systemic issues
-- **Performance Optimization**: Identify bottlenecks and optimization opportunities
+**Integration Approach:**
+- **Log Export**: Logs are stored in organized directory structure for easy consumption
+- **Standardized Format**: Consistent log message structure enables seamless integration
+- **Correlation-Based Tracing**: Unique correlation IDs enable comprehensive request tracing
+- **Security-Conscious Design**: Logs avoid sensitive data while providing sufficient context
 
-#### 7.3.5 Log Management and Analysis
+#### 7.3.5 Log Management and Storage
 
 **Storage and Retention:**
 - **Local Storage**: Logs stored in organized directory structure with run-based organization
+- **Log Files**: Entry point and multi-agent system logs stored separately for component isolation
+- **Correlation ID Storage**: Dedicated file for correlation ID lookup and trace reconstruction
 
 
+#### 7.3.6 Logging Archicture Diagrams
 **Required Diagrams**: 
 - **Diagram 7.3: Logging Architecture Diagram** - Logging components, correlation flow, and storage organization
 
 ```mermaid
-graph TB
-    subgraph "Logging Architecture"
-        subgraph "Entry Point"
-            EP[Entry Point]
-            EPL[Entry Point Logger]
-            EPID[Correlation ID Generator]
-        end
-        
-        subgraph "Multi-Agent System"
-            MAS[Multi-Agent System]
-            MASL[Multi-Agent Logger]
-            Orchestrator[Orchestrator]
-            Agents[Agents]
-        end
-        
-        subgraph "Log Storage"
-            RunDir[Run Directory]
-            EntryLog[Entry Point Log]
-            MASLog[Multi-Agent Log]
-            Summary[Run Summary]
-            CorrID[Correlation ID File]
-        end
-        
-        subgraph "Observability"
-            Tracing[Request Tracing]
-            Metrics[Performance Metrics]
-            Monitoring[System Monitoring]
-        end
+graph TD
+    Start([Question Processing Start])
+    
+    subgraph "Correlation ID Generation"
+        CorrIDGen["🔑 Generate Correlation ID"]
     end
     
-    EP --> EPID
-    EPID --> EPL
-    EPL --> EntryLog
+    subgraph "Entry Point Logging"
+        EntryLogger["📝 Entry Point Logger<br/>• Batch processing lifecycle<br/>• Configuration loading<br/>• Entry point errors"]
+    end
     
-    MAS --> MASL
-    MASL --> MASLog
+    subgraph "Multi-Agent System Logging"
+        MASLogger["📊 Multi-Agent Logger<br/>• Workflow execution<br/>• Agent interactions<br/>• State transitions<br/>• Critic decisions<br/>• Tool usage"]
+    end
     
-    Orchestrator --> MASL
-    Agents --> MASL
+    subgraph "Log Storage & Organization"
+        RunDir["📁 Run Directory<br/>• Correlation ID based<br/>• Hierarchical structure"]
+        EntryLog["📄 Entry Point Log<br/>• INFO/ERROR/WARN levels<br/>• Batch events"]
+        MASLog["📄 Multi-Agent Log<br/>• Workflow events<br/>• Agent events<br/>• Quality events"]
+    end
+    
+    Start --> CorrIDGen
+    CorrIDGen --> EntryLogger
+    EntryLogger --> MASLogger
+    
+    EntryLogger --> EntryLog
+    MASLogger --> MASLog
     
     EntryLog --> RunDir
     MASLog --> RunDir
-    Summary --> RunDir
-    CorrID --> RunDir
     
-    RunDir --> Tracing
-    RunDir --> Metrics
-    RunDir --> Monitoring
+    %% Styling - Dark Theme Optimized
+    classDef start fill:#A8E6CF,stroke:#7FB069,stroke-width:2px,color:#000000
+    classDef correlation fill:#FFB347,stroke:#FF8C00,stroke-width:2px,color:#000000
+    classDef logging fill:#4ECDC4,stroke:#26A69A,stroke-width:2px,color:#000000
+    classDef storage fill:#00D4AA,stroke:#00B894,stroke-width:2px,color:#000000
     
-    classDef component fill:#e3f2fd
-    classDef logger fill:#f3e5f5
-    classDef storage fill:#e8f5e8
-    classDef observability fill:#fff3e0
-    
-    class EP,MAS,Orchestrator,Agents component
-    class EPL,MASL,EPID logger
-    class EntryLog,MASLog,Summary,CorrID,RunDir storage
-    class Tracing,Metrics,Monitoring observability
+    class Start start
+    class CorrIDGen correlation
+    class EntryLogger,MASLogger logging
+    class RunDir,EntryLog,MASLog storage
 ```
 
 ### 7.4 Testing Strategies
 
 Testing is a first-class concern, with architecture designed for testability at all levels.
 
-**Testable Architecture:**
-- **Component Isolation:** Agents and tools are designed for independent testing and mocking.
-- **Pure Logic Separation:** Business logic is separated from I/O and external dependencies for unit testing.
-- **State Management Testability:** State transitions and updates are testable via Pydantic validation.
+**Testable Architecture:** Here are some areas of the architecture that needs to be tested. This is not an exhaustive list.
+- **Entry Point Script:** Configuration loading, factory orchestration, error handling
+- **Multi-Agent System Graph Factory:** Graph building, agent injection, state initialization  
+- **Individual Component Testing:** Agent isolation, tool integration, pure logic separation
+- **Workflow Logic Testing:** Orchestrator decision-making, state transitions, routing
+- **State Management Testing:** GraphState validation, state transitions, subgraph isolation
+- **Agent Communication Testing:** Message routing, orchestrator coordination, filtering
+- **Error Handling Testability:** Error scenarios are designed to be testable and predictable.
+- **Logging Testability:** Test logging features to ensure correct function.
 
 **Testing Support:**
 - **Unit Testing:** Pure logic and agent behaviors are covered by unit tests.
@@ -2450,173 +2449,27 @@ This section documents the key architectural decisions, alternatives considered,
 
 ---
 
-## Diagram Index
+## 9. Diagram Index
 
-This document contains the following 10 diagrams as specified in the architecture requirements:
+This document contains the following 11 diagrams as specified in the architecture requirements:
 
-### Core System Diagrams (4)
-1. **System Context Diagram** (Section 1.3) - Shows the system and its external actors/dependencies
-2. **Graph-Based Architecture Diagram** (Section 2.4) - Multi-agent system as directed graph with nodes, edges, subgraph boundaries, and workflow patterns
-3. **Main Workflow Sequence Diagram** (Section 3.4) - Complete end-to-end workflow execution
-4. **State Transition Diagram** (Section 3.4) - Workflow state machine with all state transitions
+### System Overview Diagrams (3)
+1. **Diagram 1.1: Level 1 System Context Diagram -- Multi-Agent System** (Section 1.5) - High-level stakeholder view showing external entities and data flow
+2. **Diagram 1.2: Level 1 System Context Diagram -- Multi-Agent System** (Section 1.5) - Detailed view showing internal components and external services  
+3. **Diagram 1.3: Level 1 System Context Diagram -- Input/Output and Entry Point System** (Section 1.5) - Detailed view showing input/output files and entry point components
 
-### Detailed Architecture Diagrams (4)
-5. **Communication & Message Flow Diagram** (Section 3.5) - Orchestrator-to-agent communication patterns and message flow
-6. **Tool Integration & External Dependencies Diagram** (Section 4.3) - Research tools, expert tools, and external API integration
-7. **Technical Error Handling Diagram** (Section 7.1) - Error detection, logging, and fail-fast termination
-8. **Data Architecture Diagram** (Section 5.1) - GraphState lifecycle and hierarchical state structure
-9. **Quality Control & Retry Logic Architecture Diagram** (Section 7.2) - Critic agent decision-making and agent-specific retry configuration
+### Architecture Diagrams (1)
+4. **Diagram 2.1: Level 2 System Context Diagram -- Multi-Agent System Architecture** (Section 2.5) - Technical view showing subgraph patterns
 
-### Implementation Detail Diagrams (1)
-10. **Configuration & Factory Pattern Diagram** (Section 6.2) - Entry point flow and factory pattern implementation
+### Workflow Diagrams (3)
+5. **Diagram 3.1: Main Workflow Sequence Diagram** (Section 3.4) - Complete end-to-end workflow execution
+6. **Diagram 3.2: Workflow Process Diagram** (Section 3.4) - Workflow state machine with all state transitions
+7. **Diagram 3.3: State Transition Diagram** (Section 3.4) - Workflow state machine with all state transitions
 
----
+### Implementation Diagrams (4)
+8. **Diagram 6.1: Configuration & Factory Pattern Diagram** (Section 6.2) - Factory pattern implementation and configuration flow
+9. **Diagram 7.1: Technical Error Handling Diagram** (Section 7.1) - Error detection, logging, and fail-fast termination
+10. **Diagram 7.2: Quality Control & Retry Logic Architecture Diagram** (Section 7.2) - Critic agent decision-making and agent-specific retry configuration
+11. **Diagram 7.3: Logging Architecture Diagram** (Section 7.3) - Logging components, correlation flow, and storage organization
 
-**Subgraph Integration:**
-- **Researcher Agent**: Manifests in a subgraph for multi-step research with tool interaction
-  - Main graph researcher node handles dynamic creation, management, and updating of research subgraph states based on orchestrator's current research step ID
-  - Acts as interface between main graph and research subgraph state
-  - Manages orchestrator and research agent communication based on step ID
-  - Extracts information and updates main graph state
-  - Invokes researcher agent via researcher subgraph
-- **Expert Agent**: Manifests in a subgraph for complex reasoning with calculation tools
-  - Main graph expert node owns creation, management, updating, and access of expert subgraph state
-  - Acts as interface between main graph and expert subgraph state
-  - Handles all aspects of updating the main graph and subgraph states
-  - Manages orchestrator and expert agent communication
-  - Extracts information and updates main graph state
-  - Invokes expert agent via expert subgraph
-- **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
-- **Message Conversion**: Messages are converted between main graph and subgraph formats
-
-**Cross-Component Communication:**
-Complex agents (Researcher, Expert) use subgraphs with specific communication patterns:
-- **Main Graph to Subgraph**: Messages are converted between AgentMessage and BaseMessage formats
-- **Subgraph to Main Graph**: Results are extracted and integrated into main workflow state
-- **Main Graph Node Management**: Main graph nodes handle dynamic state creation and management for their respective subgraphs
-- **Researcher Node Interface**: Acts as interface between main graph and research subgraph state
-- **Expert Node Interface**: Acts as interface between main graph and expert subgraph state
-- **Research Step Coordination**: Orchestrator manages research step progression while researcher node handles subgraph execution
-- **Expert Coordination**: Orchestrator sends instructions to expert agent for initial task execution and feedback messages when critic rejects work
-- **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
-- **State Extraction and Integration**: Main graph nodes extract information from subgraph states and update main graph state variables
-- **Message Conversion**: Messages sent to an agent using AgentMessage protocol must be converted to the BaseMessage protocol to enable the conversation with the agent's LLM.
-
-**Subgraph States Contained Within Main GraphState:**
-Researcher and Expert agents use subgraph states for their internal state management:
-- **Dynamic Research States**: Research State instances created dynamically for each research step based on orchestrator's current research step ID
-- **Conditional Research Creation**: If no research steps exist, no Research State instances are created
-- **Mandatory Expert State**: Expert subgraph state always created since Expert agent is mandatory
-- **Research State**: Individual state for each research step with conversation context and tool state
-- **Expert subgraph state**: Single state for expert agent with conversation context and calculation state
-- **State Containment**: Subgraph states are contained within the main GraphState
-- **Subgraph State Access**: Subgraph states are accessible by both their respective subgraphs and the main graph
-- **Main Graph State Access**: Agents share access to main graph state variables where appropriate
-
-**Required Diagrams**: 
-- **Diagram 8.1: Main Workflow Graph** - Complete multi-agent system with all agents and workflow
-- **Diagram 8.2: Researcher Subgraph** - Detailed view of researcher agent's tool interaction
-- **Diagram 8.3: Expert Subgraph** - Detailed view of expert agent's tool interaction
-
-**Main Workflow Graph:**
-```mermaid
-graph TB
-    subgraph "Main Workflow Graph"
-        Input[Input Interface]
-        Orchestrator[Orchestrator]
-        Planner[Planner Agent]
-        Critic[Critic Agent]
-        Researcher[Researcher Agent]
-        Expert[Expert Agent]
-        Finalizer[Finalizer Agent]
-        Output[Output]
-    end
-    
-    Input --> Orchestrator
-    Orchestrator --> Planner
-    Planner --> Orchestrator
-    Orchestrator --> Critic
-    Critic --> Orchestrator
-    Orchestrator --> Researcher
-    Researcher --> Orchestrator
-    Orchestrator --> Expert
-    Expert --> Orchestrator
-    Orchestrator --> Finalizer
-    Finalizer --> Output
-    
-    classDef mainNode fill:#e1f5fe
-    classDef agentNode fill:#f3e5f5
-    classDef criticNode fill:#fff3e0
-    
-    class Input,Orchestrator,Finalizer,Output mainNode
-    class Planner,Researcher,Expert agentNode
-    class Critic criticNode
-```
-
-**Researcher Subgraph:**
-```mermaid
-graph TB
-    subgraph "Researcher Subgraph"
-        Researcher[Researcher Agent]
-        Tools1[Web Search]
-        Tools2[Wikipedia]
-        Tools3[YouTube]
-        Tools4[File Readers]
-        Tools5[MCP Tools]
-    end
-    
-    Researcher --> Tools1
-    Researcher --> Tools2
-    Researcher --> Tools3
-    Researcher --> Tools4
-    Researcher --> Tools5
-    
-    Tools1 --> Researcher
-    Tools2 --> Researcher
-    Tools3 --> Researcher
-    Tools4 --> Researcher
-    Tools5 --> Researcher
-    
-    classDef agentNode fill:#e1f5fe
-    classDef toolNode fill:#f3e5f5
-    
-    class Researcher agentNode
-    class Tools1,Tools2,Tools3,Tools4,Tools5 toolNode
-```
-
-**Expert Subgraph:**
-```mermaid
-graph TB
-    subgraph "Expert Subgraph"
-        Expert[Expert Agent]
-        Tools1[Calculator]
-        Tools2[Unit Converter]
-        Tools3[Python REPL]
-        Tools4[MCP Browser Tools]
-    end
-    
-    Expert --> Tools1
-    Expert --> Tools2
-    Expert --> Tools3
-    Expert --> Tools4
-    
-    Tools1 --> Expert
-    Tools2 --> Expert
-    Tools3 --> Expert
-    Tools4 --> Expert
-    
-    classDef agentNode fill:#e1f5fe
-    classDef toolNode fill:#f3e5f5
-    
-    class Expert agentNode
-    class Tools1,Tools2,Tools3,Tools4 toolNode
-```
-
-**Cross-Component Communication Protocols and Message Conversion:**
-Complex agents (Researcher, Expert) use subgraphs with specific communication protocols:
-- **Subgraph Communication**: Internal communication within subgraphs
-- **Cross-Component Communication**: Communication between main graph and subgraphs
-- **Subgraph Isolation**: Subgraphs maintain isolated communication channels
-
-**Required Diagrams**: 
-- **Critic Rejection Retry Logic Architecture Diagram** - Agent-specific retry configuration and management when critics reject agent work
+**Note:** This index provides a quick reference to all diagrams in the document. Each diagram is located in its respective section and provides visual representation of the architectural concepts described in the text.

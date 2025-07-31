@@ -159,101 +159,6 @@ The system integrates with multiple external services and tools:
 - **Browser Automation**: MCP tools for web interaction and automation
 - **Calculation Tools**: Python REPL, unit converters, and mathematical functions
 
-**Required Diagrams**: 
-- **Diagram 1.1: System Context Diagram** - Shows the system and its external actors/dependencies
-
-```mermaid
-graph TB
-    subgraph "External Actors & Systems"
-        User[User/Client]
-        GAIA[GAIA Benchmark]
-    end
-    
-    subgraph "Entry Point & Configuration"
-        EP[Entry Point Script]
-        Config[Configuration Files]
-        Prompts[Prompt Files]
-        Factory[Factory Function]
-    end
-    
-    subgraph "Graph Management"
-        Graph[Compiled Workflow Graph]
-        State1[Graph State 1]
-        State2[Graph State 2]
-        StateN[Graph State N]
-        Output[Batch Results File]
-    end
-    
-    subgraph "Multi-Agent System"
-        Input[Input Interface]
-        Orchestrator[Orchestrator]
-        Planner[Planner Agent]
-        Researcher[Researcher Agent]
-        Expert[Expert Agent]
-        Critic[Critic Agent]
-        Finalizer[Finalizer Agent]
-    end
-    
-    subgraph "External Dependencies"
-        LLM[OpenAI GPT-4o]
-        Search[Tavily Search]
-        Wiki[Wikipedia API]
-        YouTube[YouTube API]
-        Files[File Readers]
-        Tools[Calculation Tools]
-    end
-    
-    User --> EP
-    EP --> Config
-    EP --> Prompts
-    Config --> Factory
-    Prompts --> Factory
-    Factory --> Graph
-    
-    Graph --> State1
-    Graph --> State2
-    Graph --> StateN
-    
-    State1 --> Input
-    State2 --> Input
-    StateN --> Input
-    
-    Input --> Orchestrator
-    Orchestrator --> Planner
-    Orchestrator --> Researcher
-    Orchestrator --> Expert
-    Orchestrator --> Critic
-    Orchestrator --> Finalizer
-    Finalizer --> State1
-    Finalizer --> State2
-    Finalizer --> StateN
-    
-    State1 --> EP
-    State2 --> EP
-    StateN --> EP
-    EP --> Output
-    
-    Planner --> LLM
-    Researcher --> Search
-    Researcher --> Wiki
-    Researcher --> YouTube
-    Researcher --> Files
-    Expert --> Tools
-    
-    classDef external fill:#ffebee
-    classDef entry fill:#e3f2fd
-    classDef factory fill:#f3e5f5
-    classDef system fill:#e8f5e8
-    classDef deps fill:#fff3e0
-    
-    class User,GAIA external
-    class EP,Config,Prompts entry
-    class Factory factory
-    class Graph,State1,State2,StateN,Output system
-    class Input,Orchestrator,Planner,Researcher,Expert,Critic,Finalizer system
-    class LLM,Search,Wiki,YouTube,Files,Tools deps
-```
-
 ### 1.4 Technology Stack Overview
 
 **High-Level Technology Stack:**
@@ -301,6 +206,263 @@ The system uses **graph-based workflow orchestration** with **multi-agent coordi
 - Comprehensive reader guidance and orientation for different audience types
 - Logical navigation structure and cross-references between sections
 - System capabilities (research, reasoning, calculation, file processing, quality control) and limitations (no persistent storage, single-request processing)
+
+### 1.5 Diagrams
+**Diagram 1.1: Level 1 System Context Diagram -- Multi-Agent System** - High-level stakeholder view showing external entities and data flow
+```mermaid
+graph LR
+    %% External Services (top - required for system operation)
+    LLM[OpenAI LLM Services]
+    WebSearch[Web Search Services]
+    Knowledge[Knowledge Base Services]
+    Calculator[Calculation Services]
+    
+    %% Central System
+    System[("Multi-Agent System<br/>GAIA Question Answering")]
+    
+    %% System Boundary
+    subgraph SystemBoundary["System Boundary"]
+        System
+    end
+    
+    %% User Interface (below system boundary)
+    subgraph UserInterface["User Interface"]
+        Input[Input:<br/>GAIA Benchmark<br/>Questions & Associated Files]
+        Output[Output:<br/>Answers & Reasoning Traces File]
+    end
+    
+    %% Data Flow - External Services to System
+    LLM -->|Reasoning & Generation| System
+    WebSearch -->|Information Gathering| System
+    Knowledge -->|Factual Data| System
+    Calculator -->|Mathematical Operations| System
+    
+    %% Data Flow - Input/Output (below system boundary)
+    Input -->|Benchmark Questions & Files| System
+    System -->|Processed Results| Output
+    
+    %% Link styling
+    linkStyle default stroke:#ffffff,stroke-width:2px
+    
+    classDef system fill:#1e3a8a,color:#ffffff,stroke:#3b82f6,stroke-width:3px
+    classDef input fill:#065f46,color:#ffffff
+    classDef output fill:#92400e,color:#ffffff
+    classDef services fill:#7c2d12,color:#ffffff
+    classDef boundary fill:#374151,color:#d1d5db
+    classDef interface fill:#1f2937,color:#ffffff
+    
+    class System system
+    class Input input
+    class Output output
+    class LLM,WebSearch,Knowledge,Calculator services
+    class SystemBoundary boundary
+    class UserInterface interface
+```
+
+**Diagram 1.2a: Level 1 System Context Diagram -- Multi-Agent System** - Detailed view showing internal components and external services
+```mermaid
+graph TB
+    %% Top: User Interface
+    subgraph UserInterface["User Interface"]
+        Input["Input: GAIA Benchmark Question & Associated Files"]
+        Output["Output: Graph State Containing Answer & Reasoning Trace"]
+    end
+    
+    %% Middle: Multi-Agent System
+    subgraph SystemBoundary["Multi-Agent System"]
+        Orchestrator["Orchestrator<br/>Workflow Control"]
+        Planner["Planner Agent<br/>Question Analysis"]
+        Researcher["Researcher Agent<br/>Information Gathering"]
+        Expert["Expert Agent<br/>Answer Synthesis"]
+        Critic["Critic Agent<br/>Quality Control"]
+        Finalizer["Finalizer Agent<br/>Output Synthesis"]
+    end
+    
+    %% Bottom: External Dependencies
+    subgraph ExternalDependencies["External Dependencies"]
+        direction LR
+        
+        subgraph LLMServices["LLM Services"]
+            LLM["OpenAI LLM Services<br/>GPT-4o & GPT-4o-mini"]
+        end
+        
+        subgraph SpecializedTools["Specialized Tools"]
+            direction TB
+            ResearcherTools["Researcher Tools"]
+            ExpertTools["Expert Tools"]
+        end
+    end
+    
+    %% Data Flow
+    UserInterface -->|"Inputs & Receives Output"| SystemBoundary
+    
+    %% Orchestrator controls agents
+    Orchestrator --> Planner
+    Orchestrator --> Researcher
+    Orchestrator --> Expert
+    Orchestrator --> Critic
+    Orchestrator --> Finalizer
+    
+    %% Agents pointing TO external dependencies
+    Planner --> LLM
+    Researcher --> LLM
+    Expert --> LLM
+    Critic --> LLM
+    Finalizer --> LLM
+    
+    %% Specialized tool connections
+    Researcher -->|"Enables ReAct Agent"| ResearcherTools
+    Expert -->|"Enables ReAct Agent"| ExpertTools
+    
+    %% Styling
+    classDef boundary fill:#374151,color:#d1d5db
+    classDef system fill:#1e3a8a,color:#ffffff,stroke:#3b82f6,stroke-width:3px
+    classDef services fill:#7c2d12,color:#ffffff
+    classDef interface fill:#1f2937,color:#ffffff
+    classDef input fill:#065f46,color:#ffffff
+    classDef output fill:#92400e,color:#ffffff
+    
+    class SystemBoundary boundary
+    class Orchestrator,Planner,Researcher,Expert,Critic,Finalizer system
+    class LLM,ResearcherTools,ExpertTools services
+    class UserInterface interface
+    class Input input
+    class Output output
+    
+    linkStyle default stroke:#ffffff,stroke-width:2px
+```
+
+**Diagram 1.2b: Level 1 System Context Diagram -- Input/Output and Entry Point System** - Detailed view showing internal components and external services
+```mermaid
+graph TB
+    %% Top: Input and Output Files
+    subgraph InputOutputFiles["Input and Output Files"]
+        Input["Input: GAIA Benchmark Questions & Associated Files"]
+        Output["Output: Answers & Reasoning Traces File"]
+    end
+    
+    %% Entry Point
+    subgraph EntryPoint["Entry Point"]
+        GraphConfig[Graph Configuration<br/>Models, Retry Limits]
+        Prompts[Prompt Files<br/>System Prompts]
+        Factory[Factory Function<br/>Graph Builder]
+        CompiledGraph[Compiled Multi-Agent System Graph]
+        BatchProcessing[Batch Processing<br/>Questions Invoke Graph]
+    end
+    
+    %% System Boundary
+    subgraph SystemBoundary["Multi-Agent System"]
+        placeholder[Multi-Agent System<br/>See Diagram 1.3b]
+    end
+    
+    %% Data Flow
+    InputOutputFiles -->|"Inputs &<br>Receives Output<br>From Batch Processing"| EntryPoint
+    GraphConfig -->|Configuration| Factory
+    Prompts -->|System Prompts| Factory
+    Factory -->|Compiled Graph| CompiledGraph
+    CompiledGraph -->|Graph Instance| BatchProcessing
+    BatchProcessing -->|"For Each Question: Invoke Graph Run"| SystemBoundary
+
+    %% Styling
+    classDef boundary fill:#374151,color:#d1d5db
+    classDef system fill:#1e3a8a,color:#ffffff,stroke:#3b82f6,stroke-width:3px
+    classDef interface fill:#1f2937,color:#ffffff
+    classDef input fill:#065f46,color:#ffffff
+    classDef output fill:#92400e,color:#ffffff
+    
+    class SystemBoundary boundary
+    class Factory,GraphConfig,Prompts,CompiledGraph,BatchProcessing system
+    class InputOutputFiles interface
+    class Input input
+    class Output output
+    
+    linkStyle default stroke:#ffffff,stroke-width:2px
+```
+
+**Diagram 1.3: Level 2 System Context Diagram -- Multi-Agent System Architecture** - Technical view showing subgraph patterns
+```mermaid
+graph TB
+    %% Entry Point Interface
+    subgraph EntryPointInterface["Entry Point Interface"]
+        GraphInvocation[Graph Invocation<br/>Single Question Processing]
+    end
+    
+    %% Multi-Agent System - Main Graph Structure
+    subgraph SystemBoundary["Multi-Agent System"]
+        direction TB
+        
+        %% Main Graph Subgraph (Top)
+        subgraph MainGraph["Main Graph Workflow"]
+            direction TB
+            InputInterface[Input Interface<br/>Question & File Processing]
+            Orchestrator[Orchestrator<br/>Workflow Control & State Management]
+            Planner[Planner Agent<br/>Question Analysis & Research Planning]
+            Researcher[Researcher Node<br/>Main Graph Interface]
+            Expert[Expert Node<br/>Main Graph Interface]
+            Critic[Critic Agent<br/>Quality Control & Validation]
+            Finalizer[Finalizer Agent<br/>Output Synthesis & Formatting]
+        end
+        
+        %% Researcher and Expert Subgraphs (Bottom)
+        subgraph ResearcherSubgraph["Researcher Subgraph"]
+            direction TB
+            ResearcherAgent[Researcher Agent<br/>Information Gathering]
+            ResearchTools[Research Tools<br/>Web Search, Knowledge, Media, Files]
+        end
+        
+        subgraph ExpertSubgraph["Expert Subgraph"]
+            direction TB
+            ExpertAgent[Expert Agent<br/>Answer Synthesis & Analysis]
+            ExpertTools[Expert Tools<br/>Code Execution, Math, Units]
+        end
+    end
+    
+
+    
+    %% Data Flow - Main Graph Workflow
+    EntryPointInterface -->|"Input: New Graph State with Question & Context<br><br>Output: Final Graph State Containing Final Answer and Reasoning Trace"| SystemBoundary
+    InputInterface -->|"Initialized State"| Orchestrator
+    
+    %% Data Flow - Orchestrator Routing
+    Orchestrator -->|"Planning Instructions"| Planner
+    Orchestrator -->|"Research Instructions"| Researcher
+    Orchestrator -->|"Expert Instructions"| Expert
+    Orchestrator -->|"Quality Review"| Critic
+    Orchestrator -->|"Finalization"| Finalizer
+    
+    %% Data Flow - Agent to Orchestrator (Feedback Loop)
+    Planner -->|"Research Plan"| Orchestrator
+    Researcher -->|"Research Results"| Orchestrator
+    Expert -->|"Expert Analysis"| Orchestrator
+    Critic -->|"Quality Feedback"| Orchestrator
+    
+    %% Data Flow - Main Graph to Subgraph Connections
+    MainGraph -->|"Researcher Node Invokes Researcher Subgraph.<br>Subgraph Returns Results To Node"| ResearcherSubgraph
+    MainGraph -->|"Expert Node Invokes Expert Subgraph.<br>Subgraph Returns Results To Node."| ExpertSubgraph
+    
+    %% Data Flow - Subgraph Internal Workflows
+    ResearcherAgent -->|"Tool Execution"| ResearchTools
+    ResearchTools -->|"Tool Results"| ResearcherAgent
+    
+    ExpertAgent -->|"Tool Execution"| ExpertTools
+    ExpertTools -->|"Tool Results"| ExpertAgent
+    
+
+    
+    %% Styling
+    classDef boundary fill:#374151,color:#d1d5db
+    classDef system fill:#1e3a8a,color:#ffffff,stroke:#3b82f6,stroke-width:3px
+    classDef subgraphStyle fill:#475569,color:#e5e7eb,stroke:#6b7280,stroke-width:2px
+    classDef external fill:#7c2d12,color:#ffffff
+    classDef interface fill:#1f2937,color:#ffffff
+    
+    class SystemBoundary boundary
+    class InputInterface,Orchestrator,Planner,Researcher,Expert,Critic,Finalizer system
+    class MainGraph,ResearcherSubgraph,ExpertSubgraph subgraphStyle
+    class EntryPointInterface interface
+    
+    linkStyle default stroke:#ffffff,stroke-width:2px
+```
 
 ---
 
@@ -742,6 +904,7 @@ The orchestrator implements specific execution patterns:
 **Required Diagrams**: 
 - **Diagram 3.1: Main Workflow Sequence Diagram** - Complete end-to-end workflow execution
 - **Diagram 3.2: State Transition Diagram** - Workflow state machine with all state transitions
+- **Diagram 3.3: Workflow Process Diagram** - High-level process flow with decision points and feedback loops
 
 ```mermaid
 sequenceDiagram
@@ -822,6 +985,34 @@ stateDiagram
         Retry limit: 4-6
     end note
 ```
+
+**Diagram 3.3: Workflow Process Diagram**
+```mermaid
+graph TD
+    Start([Start])
+    UserInput[/User Question/]
+    Planner["🧠 Planner Agent"]
+    CriticPlan["🧪 Critic Agent<br/>(on Plan)"]
+    Researcher["🔎 Researcher Agent"]
+    CriticResearch["🧪 Critic Agent<br/>(on Research)"]
+    Expert["🎓 Expert Agent"]
+    CriticExpert["🧪 Critic Agent<br/>(on Expert Answer)"]
+    Finalizer["✅ Finalizer"]
+    End([Final Answer Output])
+
+    Start --> UserInput --> Planner
+    Planner --> CriticPlan --> Researcher
+    Researcher --> CriticResearch --> Expert
+    Expert --> CriticExpert --> Finalizer
+    Finalizer --> End
+
+    %% Reject paths
+    CriticPlan -.->|reject| Planner
+    CriticResearch -.->|reject| Researcher
+    CriticExpert -.->|reject| Expert
+
+    %% Optional research bypass
+    CriticPlan -.->|If no research needed| Expert
 
 ### 3.5 Component Interaction Patterns
 

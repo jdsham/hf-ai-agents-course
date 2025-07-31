@@ -869,9 +869,6 @@ The orchestrator implements specific execution patterns:
 
 **Required Diagrams**: 
 - **Diagram 3.1: Main Workflow Sequence Diagram** - Complete end-to-end workflow execution
-- **Diagram 3.2: State Transition Diagram** - Workflow state machine with all state transitions
-- **Diagram 3.3: Workflow Process Diagram** - High-level process flow with decision points and feedback loops
-
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -925,34 +922,7 @@ sequenceDiagram
     end
 ```
 
-```mermaid
-stateDiagram
-    [*] --> Initialized: Input Interface creates GraphState
-    Initialized --> Planning: Orchestrator starts workflow
-    Planning --> PlanValidation: Planner completes
-    PlanValidation --> Planning: Critic rejects plan
-    PlanValidation --> Research: Critic approves plan
-    Research --> ResearchValidation: Research step completes
-    ResearchValidation --> Research: Critic rejects research
-    ResearchValidation --> Expert: Critic approves research
-    Expert --> ExpertValidation: Expert step completes
-    ExpertValidation --> Expert: Critic rejects expert
-    ExpertValidation --> Finalizing: Critic approves expert
-    Finalizing --> END: Finalizer completes
-    END --> [*]: Workflow termination
-    
-    note right of Planning
-        Retry limit: 2-3
-    end note
-    note right of Research
-        Retry limit: 5-7
-    end note
-    note right of Expert
-        Retry limit: 4-6
-    end note
-```
-
-**Diagram 3.3: Workflow Process Diagram**
+**Diagram 3.2: Workflow Process Diagram**
 ```mermaid
 graph TD
     Start([Start])
@@ -980,6 +950,57 @@ graph TD
     %% Optional research bypass
     CriticPlan -.->|If no research needed| Expert
 ```
+
+- **Diagram 3.3: State Transition Diagram** - Workflow state machine with all state transitions
+```mermaid
+stateDiagram
+    [*] --> input
+    input --> planner
+    planner --> critic_planner
+    critic_planner --> planner : Critic rejects plan (retry)
+    critic_planner --> finalizer : Retry limit exceeded
+    critic_planner --> researcher : Critic approves plan (if research needed)
+    critic_planner --> expert : Critic approves plan (if no research needed)
+    researcher --> critic_researcher : Complete research step[i]
+    critic_researcher --> researcher : Critic rejects result (retry step[i])
+    critic_researcher --> researcher : Critic approves result (more steps remain)\n[increment current_research_index]
+    critic_researcher --> expert : Critic approves result (last step complete)
+    critic_researcher --> finalizer : Retry limit exceeded
+    expert --> critic_expert : Expert answer
+    critic_expert --> expert : Critic rejects expert (retry)
+    critic_expert --> finalizer : Retry limit exceeded
+    critic_expert --> finalizer : Critic approves expert
+    finalizer --> END
+    END --> [*]
+    
+    input : Input Interface
+    planner : Planner Agent
+    critic_planner : Critic - Review Plan
+    researcher : Researcher Agent
+    critic_researcher : Critic - Review Research
+    expert : Expert Agent
+    critic_expert : Critic - Review Expert
+    finalizer : Finalizer Agent
+    
+    note right of researcher
+        Processes research_steps[current_research_index].
+        On approval: if more steps, increment current_research_index and repeat;
+        if last step, proceed to expert.
+    end note
+    note right of planner
+        Retry limit set by config
+    end note
+    note right of researcher
+        Retry limit set by config
+    end note
+    note right of expert
+        Retry limit set by config
+    end note
+    note right of finalizer
+        Handles retry limit exceeded
+    end note
+```
+
 
 ### 3.5 Component Interaction Patterns
 
@@ -1116,37 +1137,7 @@ Complex agents use subgraphs with specific communication patterns:
 - **Result Isolation**: Agent results are never incorporated into orchestrator conversations
 
 **Required Diagrams**: 
-- **Diagram 3.4\: Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
 
-```mermaid
-graph TB
-    subgraph "Message Flow"
-        Orchestrator[Orchestrator]
-        Planner[Planner Agent]
-        Researcher[Researcher Agent]
-        Expert[Expert Agent]
-        Critic[Critic Agent]
-        Finalizer[Finalizer Agent]
-    end
-    
-    Orchestrator -->|Send Instructions| Planner
-    Orchestrator -->|Send Instructions| Researcher
-    Orchestrator -->|Send Instructions| Expert
-    Orchestrator -->|Send Instructions| Critic
-    Orchestrator -->|Send Instructions| Finalizer
-    
-    Planner -->|Return Results| Orchestrator
-    Researcher -->|Return Results| Orchestrator
-    Expert -->|Return Results| Orchestrator
-    Critic -->|Return Feedback| Orchestrator
-    Finalizer -->|Return Results| Orchestrator
-    
-    classDef orchestrator fill:#e3f2fd
-    classDef agent fill:#f3e5f5
-    
-    class Orchestrator orchestrator
-    class Planner,Researcher,Expert,Critic,Finalizer agent
-```
 
 **Related Sections**: Sections 4, 5, 6, 7, 8 (referenced by technology stack, state management, configuration, error handling, and decisions sections)
 
@@ -1295,74 +1286,7 @@ The system integrates a comprehensive set of external tools and services to prov
   - Integration: Secure Python execution environment
   - Usage: Expert Agent for complex mathematical and data processing tasks
 
-**Required Diagrams**: 
-- **Diagram 4.1: Tool Integration & External Dependencies Diagram** - Research tools, expert tools, and external API integration
 
-```mermaid
-graph TB
-    subgraph "Multi-Agent System"
-        subgraph "Research Agent"
-            R[Researcher Agent]
-            RT[Research Tools]
-        end
-        
-        subgraph "Expert Agent"
-            E[Expert Agent]
-            ET[Expert Tools]
-        end
-    end
-    
-    subgraph "External APIs & Services"
-        subgraph "Research Tools"
-            Tavily[Tavily Search API]
-            Wiki[Wikipedia API]
-            YouTube[YouTube API]
-            PDF[PDF Reader]
-            Excel[Excel Reader]
-            PPT[PowerPoint Reader]
-            MCP[MCP Browser Tools]
-        end
-        
-        subgraph "Expert Tools"
-            Calc[Calculator]
-            Unit[Unit Converter]
-            Python[Python REPL]
-        end
-        
-        subgraph "LLM Services"
-            GPT4o[OpenAI GPT-4o]
-            GPT4oMini[OpenAI GPT-4o-mini]
-        end
-    end
-    
-    R --> RT
-    RT --> Tavily
-    RT --> Wiki
-    RT --> YouTube
-    RT --> PDF
-    RT --> Excel
-    RT --> PPT
-    
-    E --> ET
-    ET --> Calc
-    ET --> Unit
-    ET --> Python
-    ET --> MCP
-    
-    R --> GPT4o
-    E --> GPT4o
-    E --> GPT4oMini
-    
-    classDef agent fill:#e3f2fd
-    classDef tool fill:#f3e5f5
-    classDef api fill:#e8f5e8
-    classDef llm fill:#fff3e0
-    
-    class R,E agent
-    class RT,ET tool
-    class Tavily,Wiki,YouTube,PDF,Excel,PPT,Calc,Unit,Python,MCP api
-    class GPT4o,GPT4oMini llm
-```
 
 ### 4.4 Tool Integration Patterns
 
@@ -1510,73 +1434,6 @@ The state architecture is designed for:
 - **Extensibility**: Easy addition of new state fields and components
 - **Privacy**: No persistent storage ensures user data privacy
 
-**Required Diagrams**: 
-- **Diagram 5.2: Data Architecture Diagram** - GraphState lifecycle and hierarchical state structure
-
-```mermaid
-graph TB
-    subgraph "State Architecture"
-        subgraph "Main GraphState"
-            GS[GraphState]
-            Q[question]
-            RS[research_steps]
-            ES[expert_steps]
-            RR[research_results]
-            EA[expert_answer]
-            ER[expert_reasoning]
-            CS[current_step]
-            NS[next_step]
-            RC[retry_count]
-            RL[retry_limit]
-            AM[agent_messages]
-            ERROR[error]
-            EC[error_component]
-        end
-        
-        subgraph "Subgraph States"
-            subgraph "Dynamic Research States"
-                RS1[Research State 1]
-                RS2[Research State 2]
-                RSN[Research State N]
-                note1["Created dynamically<br/>based on research_steps<br/>count. If no research<br/>steps, no states created."]
-            end
-            
-            subgraph "Mandatory Expert State"
-                ES1[Expert subgraph state]
-                note2["Always created<br/>regardless of<br/>research steps"]
-            end
-        end
-    end
-    
-    GS --> Q
-    GS --> RS
-    GS --> ES
-    GS --> RR
-    GS --> EA
-    GS --> ER
-    GS --> CS
-    GS --> NS
-    GS --> RC
-    GS --> RL
-    GS --> AM
-    GS --> ERROR
-    GS --> EC
-    
-    GS -.-> RS1
-    GS -.-> RS2
-    GS -.-> RSN
-    GS --> ES1
-    
-    classDef mainState fill:#e3f2fd
-    classDef field fill:#f3e5f5
-    classDef subState fill:#e8f5e8
-    classDef note fill:#fff3e0
-    
-    class GS mainState
-    class Q,RS,ES,RR,EA,ER,CS,NS,RC,RL,AM,ERROR,EC field
-    class RS1,RS2,RSN,ES1 subState
-    class note1,note2 note
-```
 
 ### 5.2 State Hierarchy and Relationships
 
@@ -1815,59 +1672,7 @@ Communication boundaries ensure proper isolation:
 - **Result Isolation**: Researcher and Expert agent results are never incorporated into orchestrator conversations; Planner and Finalizer incorporate results in messages to orchestrator
 - **Step ID Isolation**: Research conversations are isolated per research step ID
 
-**Required Diagrams**: 
-- **Diagram 5.1: Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
 
-```mermaid
-graph LR
-    subgraph "Message Flow Architecture"
-        subgraph "Orchestrator"
-            O[Orchestrator]
-            MSG[Message Router]
-            STATE[State Manager]
-        end
-        
-        subgraph "Agents"
-            P[Planner Agent]
-            R[Researcher Agent]
-            E[Expert Agent]
-            C[Critic Agent]
-            F[Finalizer Agent]
-        end
-        
-        subgraph "Message Types"
-            INST[Instruction Messages]
-            RESP[Response Messages]
-            FEED[Feedback Messages]
-        end
-    end
-    
-    O --> MSG
-    MSG --> STATE
-    STATE --> MSG
-    
-    MSG -->|Instruction| P
-    MSG -->|Instruction| R
-    MSG -->|Instruction| E
-    MSG -->|Instruction| C
-    MSG -->|Instruction| F
-    
-    P -->|Response| MSG
-    R -->|Response| MSG
-    E -->|Response| MSG
-    C -->|Feedback| MSG
-    F -->|Response| MSG
-    
-    MSG -->|AgentMessage| O
-    
-    classDef orchestrator fill:#e3f2fd
-    classDef agent fill:#f3e5f5
-    classDef message fill:#e8f5e8
-    
-    class O,MSG,STATE orchestrator
-    class P,R,E,C,F agent
-    class INST,RESP,FEED message
-```
 
 ### 5.5 State Coordination
 

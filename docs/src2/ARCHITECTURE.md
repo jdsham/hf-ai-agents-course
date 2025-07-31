@@ -196,16 +196,6 @@ The system uses **graph-based workflow orchestration** with **multi-agent coordi
 - **Configuration Management**: Environment variables for API keys and settings
 - **Error Handling**: Comprehensive error handling with retry logic and fail-fast termination
 
-**Related Sections**: Section 2 (Architecture Principles & Patterns) for system context
-
-**Section Summary**: This section provides the foundation for understanding and navigating the architecture document, including reader guidance, quick start information, system purpose and goals, technology overview, and navigation tips.
-
-**Key Takeaways**:
-- Clear system purpose and success criteria (GAIA Level 1 questions, 30% accuracy target)
-- High-level technology stack and architectural approach (LangGraph, LangChain, Python 3.10+)
-- Comprehensive reader guidance and orientation for different audience types
-- Logical navigation structure and cross-references between sections
-- System capabilities (research, reasoning, calculation, file processing, quality control) and limitations (no persistent storage, single-request processing)
 
 ### 1.5 Diagrams
 **Diagram 1.1: Level 1 System Context Diagram -- Multi-Agent System** - High-level stakeholder view showing external entities and data flow
@@ -379,90 +369,16 @@ graph TB
     linkStyle default stroke:#ffffff,stroke-width:2px
 ```
 
-**Diagram 1.3: Level 2 System Context Diagram -- Multi-Agent System Architecture** - Technical view showing subgraph patterns
-```mermaid
-graph TB
-    %% Entry Point Interface
-    subgraph EntryPointInterface["Entry Point Interface"]
-        GraphInvocation[Graph Invocation<br/>Single Question Processing]
-    end
-    
-    %% Multi-Agent System - Main Graph Structure
-    subgraph SystemBoundary["Multi-Agent System"]
-        direction TB
-        
-        %% Main Graph Subgraph (Top)
-        subgraph MainGraph["Main Graph Workflow"]
-            direction TB
-            InputInterface[Input Interface<br/>Question & File Processing]
-            Orchestrator[Orchestrator<br/>Workflow Control & State Management]
-            Planner[Planner Agent<br/>Question Analysis & Research Planning]
-            Researcher[Researcher Node<br/>Main Graph Interface]
-            Expert[Expert Node<br/>Main Graph Interface]
-            Critic[Critic Agent<br/>Quality Control & Validation]
-            Finalizer[Finalizer Agent<br/>Output Synthesis & Formatting]
-        end
-        
-        %% Researcher and Expert Subgraphs (Bottom)
-        subgraph ResearcherSubgraph["Researcher Subgraph"]
-            direction TB
-            ResearcherAgent[Researcher Agent<br/>Information Gathering]
-            ResearchTools[Research Tools<br/>Web Search, Knowledge, Media, Files]
-        end
-        
-        subgraph ExpertSubgraph["Expert Subgraph"]
-            direction TB
-            ExpertAgent[Expert Agent<br/>Answer Synthesis & Analysis]
-            ExpertTools[Expert Tools<br/>Code Execution, Math, Units]
-        end
-    end
-    
+**Related Sections**: Section 2 (Architecture Principles & Patterns) for system context
 
-    
-    %% Data Flow - Main Graph Workflow
-    EntryPointInterface -->|"Input: New Graph State with Question & Context<br><br>Output: Final Graph State Containing Final Answer and Reasoning Trace"| SystemBoundary
-    InputInterface -->|"Initialized State"| Orchestrator
-    
-    %% Data Flow - Orchestrator Routing
-    Orchestrator -->|"Planning Instructions"| Planner
-    Orchestrator -->|"Research Instructions"| Researcher
-    Orchestrator -->|"Expert Instructions"| Expert
-    Orchestrator -->|"Quality Review"| Critic
-    Orchestrator -->|"Finalization"| Finalizer
-    
-    %% Data Flow - Agent to Orchestrator (Feedback Loop)
-    Planner -->|"Research Plan"| Orchestrator
-    Researcher -->|"Research Results"| Orchestrator
-    Expert -->|"Expert Analysis"| Orchestrator
-    Critic -->|"Quality Feedback"| Orchestrator
-    
-    %% Data Flow - Main Graph to Subgraph Connections
-    MainGraph -->|"Researcher Node Invokes Researcher Subgraph.<br>Subgraph Returns Results To Node"| ResearcherSubgraph
-    MainGraph -->|"Expert Node Invokes Expert Subgraph.<br>Subgraph Returns Results To Node."| ExpertSubgraph
-    
-    %% Data Flow - Subgraph Internal Workflows
-    ResearcherAgent -->|"Tool Execution"| ResearchTools
-    ResearchTools -->|"Tool Results"| ResearcherAgent
-    
-    ExpertAgent -->|"Tool Execution"| ExpertTools
-    ExpertTools -->|"Tool Results"| ExpertAgent
-    
+**Section Summary**: This section provides the foundation for understanding and navigating the architecture document, including reader guidance, quick start information, system purpose and goals, technology overview, and navigation tips.
 
-    
-    %% Styling
-    classDef boundary fill:#374151,color:#d1d5db
-    classDef system fill:#1e3a8a,color:#ffffff,stroke:#3b82f6,stroke-width:3px
-    classDef subgraphStyle fill:#475569,color:#e5e7eb,stroke:#6b7280,stroke-width:2px
-    classDef external fill:#7c2d12,color:#ffffff
-    classDef interface fill:#1f2937,color:#ffffff
-    
-    class SystemBoundary boundary
-    class InputInterface,Orchestrator,Planner,Researcher,Expert,Critic,Finalizer system
-    class MainGraph,ResearcherSubgraph,ExpertSubgraph subgraphStyle
-    class EntryPointInterface interface
-    
-    linkStyle default stroke:#ffffff,stroke-width:2px
-```
+**Key Takeaways**:
+- Clear system purpose and success criteria (GAIA Level 1 questions, 30% accuracy target)
+- High-level technology stack and architectural approach (LangGraph, LangChain, Python 3.10+)
+- Comprehensive reader guidance and orientation for different audience types
+- Logical navigation structure and cross-references between sections
+- System capabilities (research, reasoning, calculation, file processing, quality control) and limitations (no persistent storage, single-request processing)
 
 ---
 
@@ -641,41 +557,91 @@ The system consists of a main graph with all agents, where complex agents use su
   - State always exists regardless of research requirements
 - **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
 
-**Required Diagrams**: 
-- **Diagram 2.1: Graph-Based Architecture Diagram** - Multi-agent system as directed graph with nodes, edges, subgraph boundaries, and workflow patterns
 
+### 2.5 Diagrams
+**Diagram 2.1: Level 2 System Context Diagram -- Multi-Agent System Architecture** - Technical view showing subgraph patterns
 ```mermaid
 graph TB
-    subgraph "Main Workflow Graph"
-        Input[Input Interface]
-        Orchestrator[Orchestrator]
-        Planner[Planner Agent]
-        Critic[Critic Agent]
-        Researcher[Researcher Agent]
-        Expert[Expert Agent]
-        Finalizer[Finalizer Agent]
-        Output[Output]
+    %% Entry Point Interface
+    subgraph EntryPointInterface["Entry Point Interface"]
+        GraphInvocation[Graph Invocation<br/>Single Question Processing]
     end
     
-    Input --> Orchestrator
-    Orchestrator --> Planner
-    Planner --> Orchestrator
-    Orchestrator --> Critic
-    Critic --> Orchestrator
-    Orchestrator --> Researcher
-    Researcher --> Orchestrator
-    Orchestrator --> Expert
-    Expert --> Orchestrator
-    Orchestrator --> Finalizer
-    Finalizer --> Output
+    %% Multi-Agent System - Main Graph Structure
+    subgraph SystemBoundary["Multi-Agent System"]
+        direction TB
+        
+        %% Main Graph Subgraph (Top)
+        subgraph MainGraph["Main Graph Workflow"]
+            direction TB
+            InputInterface[Input Interface<br/>Question & File Processing]
+            Orchestrator[Orchestrator<br/>Workflow Control & State Management]
+            Planner[Planner Agent<br/>Question Analysis & Research Planning]
+            Researcher[Researcher Node<br/>Main Graph Interface]
+            Expert[Expert Node<br/>Main Graph Interface]
+            Critic[Critic Agent<br/>Quality Control & Validation]
+            Finalizer[Finalizer Agent<br/>Output Synthesis & Formatting]
+        end
+        
+        %% Researcher and Expert Subgraphs (Bottom)
+        subgraph ResearcherSubgraph["Researcher Subgraph"]
+            direction TB
+            ResearcherAgent[Researcher Agent<br/>Information Gathering]
+            ResearchTools[Research Tools<br/>Web Search, Knowledge, Media, Files]
+        end
+        
+        subgraph ExpertSubgraph["Expert Subgraph"]
+            direction TB
+            ExpertAgent[Expert Agent<br/>Answer Synthesis & Analysis]
+            ExpertTools[Expert Tools<br/>Code Execution, Math, Units]
+        end
+    end
     
-    classDef mainNode fill:#e1f5fe
-    classDef agentNode fill:#f3e5f5
-    classDef criticNode fill:#fff3e0
+
     
-    class Input,Orchestrator,Finalizer,Output mainNode
-    class Planner,Researcher,Expert agentNode
-    class Critic criticNode
+    %% Data Flow - Main Graph Workflow
+    EntryPointInterface -->|"Input: New Graph State with Question & Context<br><br>Output: Final Graph State Containing Final Answer and Reasoning Trace"| SystemBoundary
+    InputInterface -->|"Initialized State"| Orchestrator
+    
+    %% Data Flow - Orchestrator Routing
+    Orchestrator -->|"Planning Instructions"| Planner
+    Orchestrator -->|"Research Instructions"| Researcher
+    Orchestrator -->|"Expert Instructions"| Expert
+    Orchestrator -->|"Quality Review"| Critic
+    Orchestrator -->|"Finalization"| Finalizer
+    
+    %% Data Flow - Agent to Orchestrator (Feedback Loop)
+    Planner -->|"Research Plan"| Orchestrator
+    Researcher -->|"Research Results"| Orchestrator
+    Expert -->|"Expert Analysis"| Orchestrator
+    Critic -->|"Quality Feedback"| Orchestrator
+    
+    %% Data Flow - Main Graph to Subgraph Connections
+    MainGraph -->|"Researcher Node Invokes Researcher Subgraph.<br>Subgraph Returns Results To Node"| ResearcherSubgraph
+    MainGraph -->|"Expert Node Invokes Expert Subgraph.<br>Subgraph Returns Results To Node."| ExpertSubgraph
+    
+    %% Data Flow - Subgraph Internal Workflows
+    ResearcherAgent -->|"Tool Execution"| ResearchTools
+    ResearchTools -->|"Tool Results"| ResearcherAgent
+    
+    ExpertAgent -->|"Tool Execution"| ExpertTools
+    ExpertTools -->|"Tool Results"| ExpertAgent
+    
+
+    
+    %% Styling
+    classDef boundary fill:#374151,color:#d1d5db
+    classDef system fill:#1e3a8a,color:#ffffff,stroke:#3b82f6,stroke-width:3px
+    classDef subgraphStyle fill:#475569,color:#e5e7eb,stroke:#6b7280,stroke-width:2px
+    classDef external fill:#7c2d12,color:#ffffff
+    classDef interface fill:#1f2937,color:#ffffff
+    
+    class SystemBoundary boundary
+    class InputInterface,Orchestrator,Planner,Researcher,Expert,Critic,Finalizer system
+    class MainGraph,ResearcherSubgraph,ExpertSubgraph subgraphStyle
+    class EntryPointInterface interface
+    
+    linkStyle default stroke:#ffffff,stroke-width:2px
 ```
 
 **Related Sections**: Sections 3, 4, 5, 6, 7, 8 (referenced by components, technology, state management, configuration, error handling, and decisions sections)
@@ -1013,6 +979,7 @@ graph TD
 
     %% Optional research bypass
     CriticPlan -.->|If no research needed| Expert
+```
 
 ### 3.5 Component Interaction Patterns
 
@@ -1149,7 +1116,7 @@ Complex agents use subgraphs with specific communication patterns:
 - **Result Isolation**: Agent results are never incorporated into orchestrator conversations
 
 **Required Diagrams**: 
-- **Diagram 3.3: Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
+- **Diagram 3.4: Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
 
 ```mermaid
 graph TB

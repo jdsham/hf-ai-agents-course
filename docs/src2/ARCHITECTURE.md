@@ -1116,7 +1116,7 @@ Complex agents use subgraphs with specific communication patterns:
 - **Result Isolation**: Agent results are never incorporated into orchestrator conversations
 
 **Required Diagrams**: 
-- **Diagram 3.4: Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
+- **Diagram 3.4\: Communication & Message Flow Diagram** - Orchestrator-to-agent communication patterns and message flow
 
 ```mermaid
 graph TB

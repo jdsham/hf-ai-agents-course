@@ -1982,6 +1982,19 @@ The system implements a robust error handling architecture to ensure reliability
 - **Error Correlation:** Error logs are linked to specific workflow states and agent actions for comprehensive debugging
 - **Security-Conscious Error Logging:** Error details are logged without exposing sensitive data or internal system information
 
+**Multi-Agent System Error Handling:**
+- **Node and Edge Execution Logging:** Main graph and subgraph nodes and edges log the start and completion of execution (INFO level)
+- **Error Catching and Logging:** All nodes and edges implement error catching and logging before triggering runtime termination
+- **Standard Log Levels:** System uses standard log levels (INFO, WARN, ERROR, DEBUG) for comprehensive logging coverage
+- **Execution Traceability:** Each node and edge execution is logged with start and completion timestamps for performance analysis
+
+**Entry Point Error Handling:**
+- **Configuration Error Handling:** Entry point catches and logs errors during configuration gathering/assembly
+- **Prompt Loading Error Handling:** Entry point catches and logs errors during prompt loading operations
+- **Factory Function Error Handling:** Entry point catches and logs errors during factory function creation
+- **Batch Processing Error Handling:** Entry point catches and logs errors during question processing as part of batch operations
+- **Comprehensive Error Coverage:** All entry point operations include error catching and logging before system termination
+
 **Required Diagrams**: 
 - **Diagram 7.1: Technical Error Handling Diagram** - Error detection, logging, and fail-fast termination
 
@@ -2124,6 +2137,7 @@ The system implements a comprehensive logging strategy to establish traceability
 - **Security-Conscious Design**: Logging avoids sensitive data exposure while capturing sufficient context for debugging and monitoring
 - **Standardized Format**: Consistent log message structure with standardized prefixes and separated variable values
 - **Comprehensive Coverage**: All significant system events, state changes, and error conditions are logged
+- **Standard Log Levels**: System uses standard log levels INFO and ERROR for comprehensive logging coverage
 
 **Observability Goals:**
 - **Request Tracing**: Complete visibility into question processing from entry point through final answer generation
@@ -2137,14 +2151,25 @@ The system implements a comprehensive logging strategy to establish traceability
 **Entry Point Logging Layer:**
 - **Purpose**: Captures batch processing lifecycle, configuration loading, and entry point errors
 - **Scope**: Question processing initiation, configuration validation, batch progress tracking
-- **Log Levels**: INFO for normal operations, ERROR for failures, WARN for potential issues
-- **Key Events**: Batch start/completion, question processing start/completion, configuration loading, error conditions
+- **Log Levels**: INFO for normal operations, ERROR for failures, WARN for potential issues, DEBUG for detailed debugging
+- **Key Events**: 
+  - Configuration gathering/assembly start and finish (INFO)
+  - Prompt loading start and finish (INFO)
+  - Factory function creation (INFO)
+  - Start and completion of each question processing as part of batch processing (INFO)
+  - Error conditions during configuration, prompt loading, factory creation, and batch processing (ERROR)
+- **Error Handling**: Entry point catches and logs errors for all logged areas before system termination
 
 **Multi-Agent System Logging Layer:**
 - **Purpose**: Tracks workflow execution, agent interactions, and system state changes
 - **Scope**: Graph state transitions, agent execution, critic decisions, tool usage, error handling
-- **Log Levels**: INFO for workflow progression, ERROR for failures, WARN for retries and critic rejections
-- **Key Events**: Agent execution start/completion, state transitions, critic decisions, tool invocations, error conditions
+- **Log Levels**: INFO for workflow progression, ERROR for failures, WARN for retries and critic rejections, DEBUG for detailed debugging
+- **Key Events**: 
+  - Main graph and subgraph nodes and edges execution start and completion (INFO)
+  - Agent execution start/completion, state transitions, critic decisions, tool invocations
+  - Error conditions with comprehensive error catching and logging before runtime termination
+- **Node and Edge Logging**: Each node and edge in the main graph and subgraphs logs execution start and completion
+- **Error Handling**: All nodes and edges implement error catching and logging before triggering runtime termination
 
 **Correlation ID Management:**
 - **Generation**: Unique correlation ID created at entry point for each question processing run
@@ -2165,10 +2190,11 @@ The system implements a comprehensive logging strategy to establish traceability
 - **Quality Events**: Critic decisions, retry attempts, feedback generation
 - **Error Events**: Failures, exceptions, error conditions with context (see section 7.1 for error handling details)
 - **Performance Events**: Execution times, resource usage, API call metrics
+- **Node/Edge Events**: Main graph and subgraph node and edge execution start/completion
 
 **Context Information:**
 - **Correlation ID**: Links all events within a single question processing run
-- **Component Identification**: Agent name, workflow step, tool name for event attribution
+- **Component Identification**: node or edge name, workflow step, critical context for event attribution
 - **State Information**: Current workflow state, step progression, retry counts
 - **Performance Metrics**: Execution times, success rates, error frequencies
 - **Security Context**: Sanitized configuration, API endpoints, error types
@@ -2185,34 +2211,14 @@ The system implements a comprehensive logging strategy to establish traceability
 - **Error Context**: Include error types and components without exposing internal data
 - **Access Control**: Log files stored with appropriate permissions and access controls
 
-#### 7.3.4 Observability and Analysis
-
-**External Observability Platforms:**
-The logging infrastructure provides comprehensive log data that can be consumed by external observability and analysis platforms. These platforms are separate from the logging infrastructure and provide additional capabilities for monitoring, analysis, and visualization.
-
-**Log Data for Analysis:**
-The logging infrastructure generates structured log data that includes:
-- **Correlation IDs**: For linking events across the workflow
-- **Component Identification**: Agent names, workflow steps, tool names
-- **Performance Metrics**: Execution times, success rates, error frequencies
-- **Quality Metrics**: Critic decisions, retry patterns, success rates
-- **Error Context**: Error types, components, workflow states
-
-**Integration Approach:**
-- **Log Export**: Logs are stored in organized directory structure for easy consumption
-- **Standardized Format**: Consistent log message structure enables seamless integration
-- **Correlation-Based Tracing**: Unique correlation IDs enable comprehensive request tracing
-- **Security-Conscious Design**: Logs avoid sensitive data while providing sufficient context
-
-#### 7.3.5 Log Management and Storage
+#### 7.3.4 Log Management and Storage
 
 **Storage and Retention:**
 - **Local Storage**: Logs stored in organized directory structure with run-based organization
 - **Log Files**: Entry point and multi-agent system logs stored separately for component isolation
 - **Correlation ID Storage**: Dedicated file for correlation ID lookup and trace reconstruction
 
-
-#### 7.3.6 Logging Archicture Diagrams
+#### 7.3.5 Logging Architecture Diagrams
 **Required Diagrams**: 
 - **Diagram 7.3: Logging Architecture Diagram** - Logging components, correlation flow, and storage organization
 
@@ -2225,17 +2231,17 @@ graph TD
     end
     
     subgraph "Entry Point Logging"
-        EntryLogger["📝 Entry Point Logger<br/>• Batch processing lifecycle<br/>• Configuration loading<br/>• Entry point errors"]
+        EntryLogger["📝 Entry Point Logger<br/>• Configuration gathering/assembly<br/>• Prompt loading<br/>• Factory function creation<br/>• Batch processing lifecycle<br/>• Entry point errors"]
     end
     
     subgraph "Multi-Agent System Logging"
-        MASLogger["📊 Multi-Agent Logger<br/>• Workflow execution<br/>• Agent interactions<br/>• State transitions<br/>• Critic decisions<br/>• Tool usage"]
+        MASLogger["📊 Multi-Agent Logger<br/>• Node/edge execution start/completion<br/>• Workflow execution<br/>• Agent interactions<br/>• State transitions<br/>• Critic decisions<br/>• Tool usage<br/>• Error handling"]
     end
     
     subgraph "Log Storage & Organization"
         RunDir["📁 Run Directory<br/>• Correlation ID based<br/>• Hierarchical structure"]
-        EntryLog["📄 Entry Point Log<br/>• INFO/ERROR/WARN levels<br/>• Batch events"]
-        MASLog["📄 Multi-Agent Log<br/>• Workflow events<br/>• Agent events<br/>• Quality events"]
+        EntryLog["📄 Entry Point Log<br/>• INFO/ERROR/WARN/DEBUG levels<br/>• Configuration events<br/>• Batch events"]
+        MASLog["📄 Multi-Agent Log<br/>• Node/edge events<br/>• Workflow events<br/>• Agent events<br/>• Quality events"]
     end
     
     Start --> CorrIDGen
@@ -2296,6 +2302,10 @@ This section covers the error handling, retry logic, quality assurance, testing 
 - Critic agent and feedback loops provide integrated quality control at every workflow step
 - Testing strategies and infrastructure support maintainable, high-quality code and architecture
 - Correlation-based logging provides complete traceability and observability across the multi-agent workflow
+- Standard log levels (INFO, WARN, ERROR, DEBUG) provide comprehensive logging coverage
+- Node and edge execution logging enables detailed performance analysis and debugging
+- Entry point logging covers configuration, prompt loading, factory creation, and batch processing lifecycle
+
 ---
 
 ## 8. Architectural Decisions & Future Considerations

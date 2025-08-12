@@ -46,4 +46,9 @@ Thumbs.db
 
 # Test results
 test_harness/promptfoo_results/
-test_harness/experiments/ 
+test_harness/experiments/
+
+# Misc folders
+promptfoo_setup/
+original_prompts/
+mlruns/

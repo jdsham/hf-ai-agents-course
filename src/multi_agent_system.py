@@ -1,14 +1,14 @@
 from langgraph.graph import MessagesState, StateGraph, START, END
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
-from typing import Any, Literal, Optional, TypedDict, List, Annotated, cast
+from typing import Any, Literal, Optional, TypedDict, List, Annotated, cast, Callable
 from IPython.display import Image, display
 import operator
 import json
 import logging
 from langchain_openai import ChatOpenAI
+import sys
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Create logger for this module (uses root logger configuration from main.py)
 logger = logging.getLogger(__name__)
 
 # Tools
@@ -27,21 +27,11 @@ import asyncio
 from langchain_experimental.tools.python.tool import PythonREPLTool
 import pint
 
-
-
-########################################################
-# < LLMs >
-########################################################
-llm_planner = ChatOpenAI(model="gpt-4o", temperature=0)
-llm_researcher = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-llm_expert = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-llm_critic = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-llm_finalizer = ChatOpenAI(model="gpt-4o", temperature=0)
-
 ########################################################
 # < Graph State & Agent Messages >
 ########################################################
 class AgentMessage(TypedDict):
+    timestamp:str
     sender: str        # "critic", "expert", "orchestrator"
     receiver: str      # "expert", "orchestrator", "all"
     type: str          # "instruction", "feedback", "question"
@@ -53,6 +43,7 @@ class ResearcherState(MessagesState):
     messages: Annotated[list[BaseMessage], operator.add]
     step_index: int
     result: Optional[Any]
+
 
 class ExpertState(MessagesState):
     messages: Annotated[list[BaseMessage], operator.add]
@@ -66,7 +57,7 @@ class ExpertState(MessagesState):
 class GraphState(MessagesState):
     agent_messages: list[AgentMessage]
     question: str
-    files: Optional[list[str]]
+    file: Optional[str]
     research_steps: list[str]
     expert_steps: list[str]
     researcher_states: dict[int, ResearcherState]
@@ -85,103 +76,152 @@ class GraphState(MessagesState):
     final_reasoning_trace: str
     current_step: Literal["input", "planner", "researcher", "expert", "critic_planner", "critic_researcher", "critic_expert", "finalizer", ""]
     next_step: Literal["planner", "researcher", "expert", "critic_planner", "critic_researcher", "critic_expert", "finalizer", ""]
-    retry_count: int
-    retry_limit: int
-    error: Optional[str]
-    error_component: Optional[str]
+    planner_retry_count: int
+    researcher_retry_count: int
+    expert_retry_count: int
+    planner_retry_limit: int
+    researcher_retry_limit: int
+    expert_retry_limit: int
+
 
 
 ########################################################
-# < Error Handling & Validation Utilities >
+# < Configuration Types >
 ########################################################
-def log_error(component: str, error: Exception, state: Optional[Any] = None) -> None:
-    """Log errors with component context and optional state information."""
-    error_msg = f"Error in {component}: {str(error)}"
-    if state and hasattr(state, 'get'):
-        error_msg += f" | Current step: {state.get('current_step', 'unknown')}"
-    logger.error(error_msg)
+class AgentConfig():
+    """Configuration for an agent."""
 
-def set_error_state(state: GraphState, component: str, error: Exception) -> GraphState:
-    """Set error state and log the error."""
-    error_msg = f"{component} failed: {str(error)}"
-    state["error"] = error_msg
-    state["error_component"] = component
-    log_error(component, error, state)
-    return state
+    def __init__(self, name:str, provider:str, model:str, temperature:float, output_schema:dict, system_prompt:str|dict, retry_limit:int=None):
+        self.name = name
+        self.provider = provider
+        self.model = model
+        self.temperature = temperature
+        self.output_schema = output_schema
+        self.system_prompt = system_prompt
+        self.retry_limit = retry_limit
 
-def validate_state(state: GraphState) -> bool:
-    """Validate that the state has all required fields and correct types."""
-    required_fields = {
-        "agent_messages": list,
-        "question": str,
-        "research_steps": list,
-        "expert_steps": list,
-        "researcher_states": dict,
-        "current_research_index": int,
-        "research_results": list,
-        "expert_reasoning": str,
-        "critic_planner_decision": str,
-        "critic_planner_feedback": str,
-        "critic_researcher_decision": str,
-        "critic_researcher_feedback": str,
-        "critic_expert_decision": str,
-        "critic_expert_feedback": str,
-        "final_answer": str,
-        "final_reasoning_trace": str,
-        "next_step": str,
-        "retry_count": int,
-        "retry_limit": int
-    }
-    
-    for field, expected_type in required_fields.items():
-        if field not in state:
-            logger.error(f"Missing required field: {field}")
-            return False
-        if expected_type != Any and not isinstance(state[field], expected_type):
-            logger.error(f"Invalid type for {field}: expected {expected_type}, got {type(state[field])}")
-            return False
-    
-    return True
+########################################################
+# < Validation Utilities >
+########################################################
+def enforce_json_response(response: Any, component: str) -> dict:
+    """Enforce that the LLM response is either a dictionary or a JSON string. If it is a string, try to parse it as JSON.
+
+    Args:
+        response (Any): The response from the LLM
+        component (str): The component that generated the response
+
+    Raises:
+        ValueError: If the response is not a valid JSON string or a dictionary
+
+    Returns:
+        dict: The response as a dictionary
+    """
+    # If the response is a dictionary return it
+    if isinstance(response, dict):
+        return response
+    # If the response is a string, try to parse it as JSON
+    try:
+        data = json.loads(response)
+        return data
+    # If the response is not a dictionary or a JSON string, return False
+    except Exception:
+        raise ValueError(f"{component}: Response is not a dictionary or avalid JSON string: {response}")
+
+
+def validate_output_matches_json_schema(response: Any, output_schema_keys: list[str]) -> bool:
+    """Check if the LLM response has all the expected fields. Assumes the response is a dictionary when evaluating.
+
+    Args:
+        response (Any): The response from the LLM
+        output_schema_keys (list[str]): The expected fields
+
+    Returns:
+        bool: True if the response has all the expected fields, False otherwise
+    """
+    return all(key in response for key in output_schema_keys)
+
 
 def validate_llm_response(response: Any, expected_fields: List[str], component: str) -> bool:
-    """Validate LLM response has expected structure and fields."""
-    if not isinstance(response, dict):
-        logger.error(f"{component}: Response is not a dictionary")
-        return False
-    
-    for field in expected_fields:
-        if field not in response:
-            logger.error(f"{component}: Missing required field '{field}' in response")
-            return False
-    
-    return True
+    """Validate LLM response has expected structure and fields.
 
-def handle_agent_error(state: GraphState, component: str, error: Exception) -> GraphState:
-    """Handle errors in agent nodes with appropriate state updates."""
-    state = set_error_state(state, component, error)
-    
-    # Increment retry count for recoverable errors
-    if "network" not in str(error).lower() and "timeout" not in str(error).lower():
-        state["retry_count"] += 1
-    
-    # If retry limit exceeded, route to finalizer
-    if state["retry_count"] >= state["retry_limit"]:
-        state["next_step"] = "finalizer"
-        state["final_answer"] = f"The question could not be answered due to an error in {component}."
-        state["final_reasoning_trace"] = f"System encountered an error: {str(error)}"
-        logger.warning(f"Retry limit exceeded for {component}, routing to finalizer")
-    
-    return state
+    Args:
+        response (Any): The response from the LLM
+        expected_fields (List[str]): The expected fields
+        component (str): The component that generated the response
 
+    Returns:
+        dict: The response as a dictionary
+
+    Raises:
+        KeyError: If the response does not contain all the expected fields
+    """
+    response = enforce_json_response(response, component)
+    
+    if not validate_output_matches_json_schema(response, expected_fields):
+        raise KeyError(f"{component}: Response does not contain all expected fields. Expected fields: {expected_fields}, Response: {response}")
+    
+    return response
 
 ########################################################
 # < Inter-Agent Communication >
 ########################################################
+def compose_agent_message(sender: str, receiver: str, message_type: str, content: str, step_id: Optional[int] = None) -> AgentMessage:
+    """
+    Composes an agent message using the AgentMessage protocol and data structure.
+    
+    Args:
+        sender: str - The entity sending the message, either an agent or the orchestrator
+        receiver: str - The entity receiving the message, either an agent or the orchestrator
+        message_type: str - The type of message that is being sent: instruction, response, feedback
+        content: str - The message content / message body
+        step_id: Optional[int] - Optional. The specific research step id associated with message being composed
+        
+    Returns:
+        AgentMessage - The composed message as an AgentMessage
+    """
+    # Step 1: Get the current timestamp
+    import datetime
+    current_timestamp = datetime.datetime.now().isoformat()
+    
+    # Step 2: Take the inputs and current timestamp, and use them to compose an AgentMessage type variable that follows the AgentMessage data structure
+    agent_message: AgentMessage = {
+        "sender": sender,
+        "receiver": receiver,
+        "type": message_type,
+        "content": content,
+        "step_id": step_id,
+        "timestamp": current_timestamp
+    }
+    
+    # Step 3: Return the composed message
+    logging.debug(f"Agent message composed successfully: {agent_message}")
+    return agent_message
+
 def send_message(state: GraphState, message: AgentMessage) -> GraphState:
+    """Send a message to the agent.
+
+    Args:
+        state (GraphState): The current state of the graph
+        message (AgentMessage): The message to send
+
+    Returns:
+        GraphState: The updated state of the graph
+    """
     state["agent_messages"].append(message)
     return state
 
 def get_agent_conversation(state: GraphState, agent_name: str, types: Optional[List[str]] = None, step_id: Optional[int] = None) -> List[AgentMessage]:
+    """Get the conversation between the orchestrator and the agent.
+
+    Args:
+        state (GraphState): The current state of the graph
+        agent_name (str): The name of the agent
+        types (Optional[List[str]]): The types of messages to get
+        step_id (Optional[int]): The step id to get messages for
+
+    Returns:
+        List[AgentMessage]: The list of AgentMessages
+    """
     # Only messages between orchestrator and the agent
     inbox = [
         m for m in state["agent_messages"]
@@ -196,6 +236,14 @@ def get_agent_conversation(state: GraphState, agent_name: str, types: Optional[L
 
 
 def convert_agent_messages_to_langchain(messages: List[AgentMessage]) -> List[BaseMessage]:
+    """Convert a list of AgentMessages to a list of LangChain BaseMessages.
+
+    Args:
+        messages (List[AgentMessage]): The list of AgentMessages to convert
+
+    Returns:
+        List[BaseMessage]: The list of LangChain BaseMessages
+    """
     converted_messages = []
     for m in messages:
         if m["sender"] == "orchestrator":
@@ -206,36 +254,13 @@ def convert_agent_messages_to_langchain(messages: List[AgentMessage]) -> List[Ba
     return converted_messages
 
 ########################################################
-# < Agent System Prompts >
+# < Researcher SubGraph >
 ########################################################
-import os
-PROMPT_DIR = os.path.join(os.path.dirname(__file__), "prompts")
-def load_prompt(filename):
-    with open(os.path.join(PROMPT_DIR, filename), "r", encoding="utf-8") as f:
-        return f.read()
-
-planner_system_prompt = load_prompt("planner_system_prompt.txt")
-critic_planner_system_prompt = load_prompt("critic_planner_system_prompt.txt")
-researcher_system_prompt = load_prompt("researcher_system_prompt.txt")
-critic_researcher_system_prompt = load_prompt("critic_researcher_system_prompt.txt")
-expert_system_prompt = load_prompt("expert_system_prompt.txt")
-critic_expert_system_prompt = load_prompt("critic_expert_system_prompt.txt")
-finalizer_system_prompt = load_prompt("finalizer_system_prompt.txt")
-
-
-def make_research_steps_and_results(prompt, question: str, research_steps: list[str], research_results: list[str]) -> str:
-    research_steps_and_results = ""
-    for i, (step, result) in enumerate(zip(research_steps, research_results)):
-        research_steps_and_results += f"## The research step {i} is:\n{step}\n## The research result {i} is:\n{result}\n"
-    return prompt.format(question=question, research_steps_and_results=research_steps_and_results)
-
-
-########################################################
-# < Researcher Tools >
-########################################################
+@tool
 def youtube_transcript_tool(url: str) -> str:
     """
     Extract transcript from a YouTube video URL.
+    Use this when you need to get the content/transcript from a specific YouTube video.
     
     Args:
         url: The YouTube video URL to extract transcript from
@@ -243,33 +268,27 @@ def youtube_transcript_tool(url: str) -> str:
     Returns:
         The transcript text from the video
     """
-    try:
-        logger.info(f"YouTube transcript tool processing URL: {url}")
-        
-        # Load the YouTube video transcript
-        loader = YoutubeLoader.from_youtube_url(url, add_video_info=True)
-        documents = loader.load()
-        
-        if not documents:
-            logger.warning("No transcript found for YouTube video")
-            return "No transcript found for this YouTube video."
-        
-        # Extract transcript content
-        transcript = documents[0].page_content
-        
-        # Add video metadata if available
-        metadata = documents[0].metadata
-        video_info = f"Video Title: {metadata.get('title', 'Unknown')}\n"
-        video_info += f"Channel: {metadata.get('author', 'Unknown')}\n"
-        video_info += f"Duration: {metadata.get('length', 'Unknown')} seconds\n\n"
-        
-        logger.info(f"YouTube transcript tool completed successfully")
-        return video_info + transcript
-        
-    except Exception as e:
-        error_msg = f"Error extracting transcript: {str(e)}"
-        logger.error(f"YouTube transcript tool failed: {error_msg}")
-        return error_msg
+    logger.info(f"YouTube transcript tool processing URL: {url}")
+    
+    # Load the YouTube video transcript
+    loader = YoutubeLoader.from_youtube_url(url, add_video_info=True)
+    documents = loader.load()
+    
+    if not documents:
+        logger.info("No transcript found for YouTube video")
+        return "No transcript found for this YouTube video."
+    
+    # Extract transcript content
+    transcript = documents[0].page_content
+    
+    # Add video metadata if available
+    metadata = documents[0].metadata
+    video_info = f"Video Title: {metadata.get('title', 'Unknown')}\n"
+    video_info += f"Channel: {metadata.get('author', 'Unknown')}\n"
+    video_info += f"Duration: {metadata.get('length', 'Unknown')} seconds\n\n"
+    
+    logger.info(f"YouTube transcript tool completed successfully")
+    return video_info + transcript
 
 @tool
 def unstructured_excel_tool(file_path: str) -> list[Document]:
@@ -279,6 +298,7 @@ def unstructured_excel_tool(file_path: str) -> list[Document]:
     loader = UnstructuredExcelLoader(file_path)
     return loader.load()
 
+
 @tool
 def unstructured_powerpoint_tool(file_path: str) -> list[Document]:
     """
@@ -286,6 +306,7 @@ def unstructured_powerpoint_tool(file_path: str) -> list[Document]:
     """
     loader = UnstructuredPowerPointLoader(file_path)
     return loader.load()
+
 
 @tool
 def unstructured_pdf_tool(file_path: str) -> list[Document]:
@@ -296,74 +317,85 @@ def unstructured_pdf_tool(file_path: str) -> list[Document]:
     return loader.load()
 
 
-wikipedia_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper(wiki_client=None))
-
-tavily_tool = TavilySearch()
-
-youtube_tool = Tool(
-    name="youtube_transcript",
-    description="Extract transcript from a YouTube video URL. Use this when you need to get the content/transcript from a specific YouTube video.",
-    func=youtube_transcript_tool,
-)
-
-
 async def get_browser_mcp_tools(mcp_url: str) -> list:
+    """Get the browser MCP tools from the given URL.
+
+    Args:
+        mcp_url (str): The URL of the browser MCP
+
+    Returns:
+        list: The list of MCP tools
+    """
     async with streamablehttp_client(mcp_url) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             mcp_tools = await load_mcp_tools(session)
             return mcp_tools
 
-async def get_research_tools():
+
+async def get_research_tools() -> list[Tool]:
+    """Get the research tools.
+
+    Returns:
+        list: The list of research tools
+    """
+    wikipedia_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper(wiki_client=None))
+    tavily_tool = TavilySearch()
+
     browser_mcp_url = "http://0.0.0.0:3000/mcp"
     mcp_tools = await get_browser_mcp_tools(browser_mcp_url)
     return [
-        youtube_tool,
+        youtube_transcript_tool,
         tavily_tool,
+        wikipedia_tool,
         unstructured_excel_tool,
         unstructured_powerpoint_tool,
         unstructured_pdf_tool,
         *mcp_tools,
     ]
 
-research_tools = asyncio.run(get_research_tools())
-#research_tools = await get_research_tools()
+def create_researcher_llm_node(config: AgentConfig, llm_researcher: ChatOpenAI) -> Callable[[ResearcherState], ResearcherState]:
+    """Create a researcher LLM node function with the given prompt and LLM.
+
+    Args:
+        config (AgentConfig): The configuration for the researcher agent
+        llm_researcher (ChatOpenAI): The LLM for the researcher agent
+
+    Returns:
+        Callable[[ResearcherState], ResearcherState]: The researcher LLM node function
+    """
+    #llm_researcher = researcher_llm.bind_tools(research_tools).with_structured_output(output_schema, method="json_mode")
+    def researcher_llm_node(state: ResearcherState) -> ResearcherState:
+        """Researcher LLM node function with the given prompt and LLM."""
+        sys_prompt = [SystemMessage(content=config.system_prompt)]
+        response = llm_researcher.invoke(sys_prompt + state["messages"])
+        if validate_output_matches_json_schema(response, config.output_schema.keys()):
+            return {"messages": [AIMessage(content=json.dumps(response))], "result": response["result"]}
+        else:
+            return {"messages": [response]}
+    return researcher_llm_node
+
+def create_researcher_subgraph(researcher_llm_node: Callable, research_tools: list) -> StateGraph:
+    """Create and compile a researcher subgraph with the given prompt and LLM.
+
+    Args:
+        researcher_llm_node (Callable): The researcher LLM node function
+        research_tools (list): The list of research tools
+
+    Returns:
+        StateGraph: The compiled researcher subgraph
+    """
+    researcher_graph = StateGraph(ResearcherState)
+    researcher_graph.add_node("researcher", researcher_llm_node)
+    researcher_graph.add_node("tools", ToolNode(research_tools))
+    researcher_graph.add_edge(START, "researcher")
+    researcher_graph.add_conditional_edges("researcher", tools_condition)
+    researcher_graph.add_edge("tools", "researcher")
+    return researcher_graph.compile()
 
 ########################################################
-# < Researcher Graph >
+# < Expert SubGraph >
 ########################################################
-llm_researcher = llm_researcher.bind_tools(research_tools)
-
-def researcher_llm_node(state: ResearcherState) -> ResearcherState:
-    output_schema = {"result": str}
-    llm_researcher_structured = llm_researcher.with_structured_output(output_schema, method="json_mode")
-    sys_prompt = [SystemMessage(content=researcher_system_prompt)]
-    response = llm_researcher_structured.invoke(sys_prompt + state["messages"])
-    if isinstance(response, dict):
-        return {"messages": [AIMessage(content=json.dumps(response))], "result": response["result"]}
-    else:
-        return {"messages": [response]}
-
-researcher_graph = StateGraph(ResearcherState)
-researcher_graph.add_node("researcher", researcher_llm_node)
-researcher_graph.add_node("tools", ToolNode(research_tools))
-researcher_graph.add_edge(START, "researcher")
-researcher_graph.add_conditional_edges(
-    "researcher",
-    # If the latest message (result) from assistant is a tool call -> tools_condition routes to tools
-    # If the latest message (result) from assistant is a not a tool call -> tools_condition routes to END
-    tools_condition,
-)
-researcher_graph.add_edge("tools", "researcher")
-compiled_researcher_graph = researcher_graph.compile()
-
-
-########################################################
-# < Expert Tools >
-########################################################
-python_repl_tool = PythonREPLTool()
-ureg = pint.UnitRegistry()
-
 @tool
 def unit_converter(quantity: str, to_unit: str) -> str:
     """
@@ -374,173 +406,171 @@ def unit_converter(quantity: str, to_unit: str) -> str:
     Returns:
         The converted value as a string.
     """
-    try:
-        logger.info(f"Unit converter converting {quantity} to {to_unit}")
-        q = ureg(quantity)
-        result = q.to(to_unit)
-        logger.info(f"Unit converter result: {result}")
-        return str(result)
-    except Exception as e:
-        error_msg = f"Error: {e}"
-        logger.error(f"Unit converter failed: {error_msg}")
-        return error_msg
+    logger.info(f"Unit converter converting {quantity} to {to_unit}")
+    ureg = pint.UnitRegistry()
+    q = ureg(quantity)
+    result = q.to(to_unit)
+    logger.info(f"Unit converter result: {result}")
+    return str(result)
 
 
 @tool
 def calculator(expression: str) -> str:
-    """Evaluate a basic math expression. Supports +, -, *, /, **, and parentheses."""
+    """Evaluate a basic math expression. Supports +, -, *, /, **, and parentheses.
+
+    Args:
+        expression (str): The math expression to evaluate
+
+    Returns:
+        str: The result of the expression
+    """
+    logger.info(f"Calculator evaluating expression: {expression}")
     import math
     allowed_names = {
         k: v for k, v in math.__dict__.items() if not k.startswith("__")
     }
-
-    try:
-        logger.info(f"Calculator evaluating expression: {expression}")
-        result = eval(expression, {"__builtins__": None}, allowed_names)
-        logger.info(f"Calculator result: {result}")
-        return str(result)
-    except Exception as e:
-        error_msg = f"Error evaluating expression: {e}"
-        logger.error(f"Calculator failed: {error_msg}")
-        return error_msg
-
-expert_tools = [python_repl_tool, unit_converter, calculator]
-
-########################################################
-# < Expert Graph >
-########################################################
-llm_expert_with_tools = llm_expert.bind_tools(expert_tools)
-
-def is_final_output(response, output_schema_keys):
-    if isinstance(response, dict):
-        return all(key in response for key in output_schema_keys)
-    try:
-        data = json.loads(response)
-        return all(key in data for key in output_schema_keys)
-    except Exception:
-        return False
+    result = eval(expression, {"__builtins__": None}, allowed_names)
+    logger.info(f"Calculator result: {result}")
+    return str(result)
 
 
-def expert_llm_node(state: ExpertState) -> ExpertState:
-    output_schema = {"expert_answer": str, "reasoning_trace": str}
-    llm_expert_structured = llm_expert.with_structured_output(output_schema, method="json_mode")
-    sys_prompt = make_research_steps_and_results(expert_system_prompt, state["question"], state["research_steps"], state["research_results"])
-    sys_prompt = [SystemMessage(content=sys_prompt)]
-    response = llm_expert_structured.invoke(sys_prompt + state["messages"])    
-    if is_final_output(response, output_schema.keys()):
-        state["expert_answer"] = response["expert_answer"]
-        state["expert_reasoning"] = response["reasoning_trace"]
-        response = AIMessage(content=f"Expert answer: {state['expert_answer']}\nExpert reasoning: {state['expert_reasoning']}")
-    return {"messages": [response]}
+def get_expert_tools() -> List[Tool]:
+    """Get the expert tools.
 
-expert_graph = StateGraph(ExpertState)
-expert_graph.add_node("expert", expert_llm_node)
-expert_graph.add_node("tools", ToolNode(expert_tools))
-expert_graph.add_edge(START, "expert")
-expert_graph.add_conditional_edges(
-    "expert",
-    # If the latest message (result) from assistant is a tool call -> tools_condition routes to tools
-    # If the latest message (result) from assistant is a not a tool call -> tools_condition routes to END
-    tools_condition,
-)
-expert_graph.add_edge("tools", "expert")
-compiled_expert_graph = expert_graph.compile()
+    Returns:
+        list: The list of expert tools
+    """
+    python_repl_tool = PythonREPLTool()
+    return [unit_converter, calculator, python_repl_tool]
+
+
+
+def create_expert_llm_node(config: AgentConfig, llm_expert: ChatOpenAI) -> Callable[[ExpertState], ExpertState]:
+    """Create an expert LLM node function with the given prompt and LLM."""
+    #output_schema = {"expert_answer": str, "reasoning_trace": str}
+    #llm_expert_structured = llm_expert_with_tools.with_structured_output(output_schema, method="json_mode")
+        
+    def expert_llm_node(state: ExpertState) -> ExpertState:
+        sys_prompt = [SystemMessage(content=config.system_prompt)]
+        response = llm_expert.invoke(sys_prompt + state["messages"])    
+        if validate_output_matches_json_schema(response, config.output_schema.keys()):
+            state["expert_answer"] = response["expert_answer"]
+            state["expert_reasoning"] = response["reasoning_trace"]
+            response = AIMessage(content=f"Expert answer: {state['expert_answer']}\nExpert reasoning: {state['expert_reasoning']}")
+        return {"messages": [response]}
+    return expert_llm_node
+
+
+def create_expert_subgraph(expert_llm_node: Callable, expert_tools: list) -> StateGraph:
+    """Create and compile an expert subgraph with the given prompt and LLM."""
+    expert_graph = StateGraph(ExpertState)
+    expert_graph.add_node("expert", expert_llm_node)
+    expert_graph.add_node("tools", ToolNode(expert_tools))
+    expert_graph.add_edge(START, "expert")
+    expert_graph.add_conditional_edges("expert", tools_condition)
+    expert_graph.add_edge("tools", "expert")
+    return expert_graph.compile()
+
 
 ########################################################
 # < Main Graph Nodes >
 ########################################################
-def input_interface(state: GraphState) -> GraphState:
-    """Input interface with error handling and validation."""
-    try:
+def create_input_interface(agent_configs: dict[str, AgentConfig]):
+    """Create an input interface function with the given retry limit."""
+    def input_interface(state: GraphState) -> GraphState:
+        """Input interface with error handling and validation."""
         logger.info("Input interface starting execution")
         
+        # Handle question extraction with proper error handling
+        if not state.get("question") or len(state["question"]) == 0:
+            raise ValueError("No question provided to input interface")
+
         # Initialize all state fields first to ensure they exist for error handling
-        state["agent_messages"] = []
-        state["files"] = None
+        state["file"] = state["file"] if state["file"] else None
+        # Planner Work
         state["research_steps"] = []
         state["expert_steps"] = []
+        # Researcher Work
         state["current_research_index"] = -1
         state["researcher_states"] = dict()
         state["research_results"] = []
+        # Expert Work
         state["expert_state"] = None
         state["expert_answer"] = ""
         state["expert_reasoning"] = ""
+        # Critic Work
         state["critic_planner_decision"] = ""
         state["critic_planner_feedback"] = ""
         state["critic_researcher_decision"] = ""
         state["critic_researcher_feedback"] = ""
         state["critic_expert_decision"] = ""
         state["critic_expert_feedback"] = ""
+        # Finalizer Work
         state["final_answer"] = ""
         state["final_reasoning_trace"] = ""
+        # Orchestrator Work
+        state["agent_messages"] = []
         state["current_step"] = "input"
         state["next_step"] = "planner"
-        state["retry_count"] = 0
-        state["retry_limit"] = 5
-        state["error"] = None
-        state["error_component"] = None
-        
-        # Handle question extraction with proper error handling
-        if not state.get("messages") or len(state["messages"]) == 0:
-            state["question"] = ""
-            logger.warning("No messages provided to input interface")
-        else:
-            question = state["messages"][0].content
-            if isinstance(question, str):
-                state["question"] = question
-            else:
-                state["question"] = str(question)
-        
-        # Validate state after initialization
-        if not validate_state(state):
-            logger.warning("State validation failed after input interface initialization")
+        # Retry counts and limits
+        state["planner_retry_count"] = 0
+        state["researcher_retry_count"] = 0
+        state["expert_retry_count"] = 0
+        state["planner_retry_limit"] = agent_configs["planner"].retry_limit
+        state["researcher_retry_limit"] = agent_configs["researcher"].retry_limit
+        state["expert_retry_limit"] = agent_configs["expert"].retry_limit
+      
         
         logger.info("Input interface completed successfully")
         return state
-        
-    except Exception as e:
-        logger.error(f"Input interface failed: {str(e)}")
-        return handle_agent_error(state, "input_interface", e)
+    
+    return input_interface
 
 
 ########################################################
 # < Orchestrator Helper Functions >
 ########################################################
 def determine_next_step(state: GraphState) -> GraphState:
-    """Step 1: Determine the next step based on current step and critic decisions"""
+    """Orchestrator logic to determine the next step based on current step and critic decisions.
+    Handles critic decisions and sets the next step accordingly.
+    Handles initial state and non-critic steps.
+    Handles retry counter incrementation.
+
+    Args:
+        state (GraphState): The current state of the graph
+
+    Returns:
+        GraphState: The updated state of the graph
+    """
     
     # Handle critic decisions and set next step accordingly
     if state["current_step"] == "critic_planner":
         if state["critic_planner_decision"] == "approve":
             if len(state["research_steps"]) > 0:
                 state["next_step"] = "researcher"
-                # Reset research state for new research phase
-                state["current_research_index"] = -1
-                state["research_results"] = []
-                state["researcher_states"] = dict()
             else:
                 state["next_step"] = "expert"
         elif state["critic_planner_decision"] == "reject":
             state["next_step"] = "planner"
-            state["retry_count"] += 1
+            state["planner_retry_count"] += 1
     
     elif state["current_step"] == "critic_researcher":
         if state["critic_researcher_decision"] == "approve":
             # Check if all research steps are completed
-            if state["current_research_index"] >= len(state["research_steps"]) - 1:
+            if state["current_research_index"] + 1 >= len(state["research_steps"]):
                 state["next_step"] = "expert"
             else:
                 state["next_step"] = "researcher"
         elif state["critic_researcher_decision"] == "reject":
             state["next_step"] = "researcher"
-            state["retry_count"] += 1
+            state["researcher_retry_count"] += 1
     
     elif state["current_step"] == "critic_expert":
         if state["critic_expert_decision"] == "approve":
             state["next_step"] = "finalizer"
         elif state["critic_expert_decision"] == "reject":
             state["next_step"] = "expert"
-            state["retry_count"] += 1
+            state["expert_retry_count"] += 1
     
     # Handle initial state and non-critic steps
     elif state["current_step"] == "" or state["current_step"] == "input":
@@ -556,8 +586,21 @@ def determine_next_step(state: GraphState) -> GraphState:
 
 
 def check_retry_limit(state: GraphState) -> GraphState:
-    """Step 2: Check retry count and handle limit exceeded"""
-    if state["retry_count"] >= state["retry_limit"]:
+    """Orchestrator logic to check retry count and handle limit exceeded.
+    Handles retry limit exceeded and sets the next step to finalizer.
+    Handles graceful failure and sets the final answer and reasoning trace.
+
+    Args:
+        state (GraphState): The current state of the graph
+
+    Returns:
+        GraphState: The updated state of the graph
+    """
+    if (state["planner_retry_count"] >= state["planner_retry_limit"] 
+        or state["researcher_retry_count"] >= state["researcher_retry_limit"] 
+        or state["expert_retry_count"] >= state["expert_retry_limit"]):
+        # Log the failure
+        logger.info(f"Graceful Failure: Retry limit exceeded for {state['next_step']}")
         state["next_step"] = "finalizer"
         state["final_answer"] = "The question could not be answered."
         state["final_reasoning_trace"] = "The question could not be answered."
@@ -565,7 +608,16 @@ def check_retry_limit(state: GraphState) -> GraphState:
 
 
 def execute_next_step(state: GraphState) -> GraphState:
-    """Step 3: Execute the next step by setting current_step and sending message"""
+    """Orchestrator logic to execute the next step by setting current_step and sending message.
+    Handles the different steps and sends the appropriate message.
+    Includes any context needed in the message.
+
+    Args:
+        state (GraphState): The current state of the graph
+
+    Returns:
+        GraphState: The updated state of the graph
+    """
     
     # Set current_step = next_step
     state["current_step"] = state["next_step"]
@@ -574,499 +626,169 @@ def execute_next_step(state: GraphState) -> GraphState:
     if state["current_step"] == "planner":
         if state["critic_planner_decision"] == "reject":
             # Retry with feedback
-            message = {
-                "sender": "orchestrator",
-                "receiver": "planner",
-                "type": "instruction",
-                "content": state["critic_planner_feedback"],
-                "step_id": None,
-            }
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "planner",
+                type= "instruction",
+                content= f"Use the following feedback to improve the plan:\n{state['critic_planner_feedback']}",
+            )
         else:
             # Initial planning request
-            files_info = ""
-            if state["files"]:
-                files_info = "\nInclude using following files in the research steps: " + "\n".join(state["files"])
+            file_info = ""
+            if state["file"]:
+                file_info = "\n\nInclude using following file in any of the research steps:" + "\n".join(state["file"])
             
-            message = {
-                "sender": "orchestrator",
-                "receiver": "planner",
-                "type": "instruction",
-                "content": f"Develop a logical plan to answer the following question: {state['question']}{files_info}",
-                "step_id": None,
-            }
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "planner",
+                type= "instruction",
+                content= f"Develop a logical plan to answer the following question:\n{state['question']}{file_info}",
+            )
     
     elif state["current_step"] == "critic_planner":
-        logical_plan = "\n".join(state["research_steps"]) + "\n" + "\n".join(state["expert_steps"])
-        message = {
-            "sender": "orchestrator",
-            "receiver": "critic_planner",
-            "type": "instruction",
-            "content": f"Review the following plan to make sure it is a good plan to answer the question. The plan: {logical_plan}",
-            "step_id": None,
-        }
+        # Add context to the last message to the critic.
+        task = f"Use the following context to answer the User Question:\n\n## Context\n### Planner Task\nThe planner was asked to develop a logical plan to answer the following input question: {state['question']}\n\n"
+        file_info = ""
+        if state["file"]:
+            file_info = f"\n\nThe following file must be used in reference to answer the question:\n {state["file"]}"
+        task += file_info
+        research_steps = f"### Planner's Plan\nThe planner determined the following research steps were needed to answer the question: {state['research_steps']}"
+        expert_steps =  f"\nThe planner determined the following expert steps were needed to answer the question: {state['expert_steps']}\n\n"
+        user_question = "## User Question:\nDoes the planner's plan have the correct and logical research and expert steps needed to answer the input question? If yes, approve. If no, reject."
+        message = compose_agent_message(
+            sender= "orchestrator",
+            receiver= "critic_planner",
+            type= "instruction",
+            content= task + research_steps + expert_steps + user_question,
+        )
     
     elif state["current_step"] == "researcher":
         if state["critic_researcher_decision"] == "reject":
             # Retry with feedback
-            message = {
-                "sender": "orchestrator",
-                "receiver": "researcher",
-                "type": "instruction",
-                "content": state["critic_researcher_feedback"],
-                "step_id": state["current_research_index"],
-            }
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "researcher",
+                type= "instruction",
+                content= f"Use the following feedback to improve the research:\n{state["critic_researcher_feedback"]}",
+                step_id=state["current_research_index"],
+            )
         else:
             # Increment research index for new step
             state["current_research_index"] += 1
             
-            if state["current_research_index"] < len(state["research_steps"]):
-                message = {
-                    "sender": "orchestrator",
-                    "receiver": "researcher",
-                    "type": "instruction",
-                    "content": f"Research the following topic or question: {state['research_steps'][state['current_research_index']]}",
-                    "step_id": state["current_research_index"],
-                }
-            else:
-                # All research steps completed
-                message = {
-                    "sender": "orchestrator",
-                    "receiver": "researcher",
-                    "type": "instruction",
-                    "content": "All research steps completed.",
-                    "step_id": state["current_research_index"] - 1,
-                }
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "researcher",
+                type= "instruction",
+                content= f"Research the following topic or question: {state['research_steps'][state['current_research_index']]}",
+                step_id= state["current_research_index"],
+            )
+
     
     elif state["current_step"] == "critic_researcher":
-        research_result = ""
-        if state["current_research_index"] < len(state["research_results"]):
-            research_result = state["research_results"][state["current_research_index"]]
-        
-        message = {
-            "sender": "orchestrator",
-            "receiver": "critic_researcher",
-            "type": "instruction",
-            "content": f"Review the following research results to make sure it satisfies the request.\n## The research results: {research_result}",
-            "step_id": state["current_research_index"],
-        }
+        # Add context to the last message to the critic.
+        topic = f"Use the following context to answer the User Question:\n\n## Context\n### Research Topic\nThe researcher was asked to research the following topic: {state['research_steps'][state['current_research_index']]}\n\n"
+        results = f"### Research Results\nThe researcher's results are: {state['research_results'][state['current_research_index']]}\n\n"
+        user_question = "## User Question:\nDoes the researcher's results contain sufficient information on the topic? If yes, approve. If no, reject."
+       
+        message = compose_agent_message(
+            sender= "orchestrator",
+            receiver= "critic_researcher",
+            type= "instruction",
+            content= topic + results + user_question,
+        )
     
     elif state["current_step"] == "expert":
         if state["critic_expert_decision"] == "reject":
             # Retry with feedback
-            message = {
-                "sender": "orchestrator",
-                "receiver": "expert",
-                "type": "instruction",
-                "content": state["critic_expert_feedback"],
-                "step_id": None,
-            }
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "expert",
+                type= "instruction",
+                content= f"Use the following feedback to improve your answer:\n{state["critic_expert_feedback"]}",
+            )
         else:
-            message = {
-                "sender": "orchestrator",
-                "receiver": "expert",
-                "type": "instruction",
-                "content": f"Perform the following step(s) to answer the question: {' '.join(state['expert_steps'])}",
-                "step_id": None,
-            }
+            context = f"Use the following context and recommended instructions to answer the question:\n ## Context:\n{state['research_results']}\n\n"
+            expert_steps = f"## Recommended Instructions:\nIt was recommended to perform the following steps to answer the question:\n{state['expert_steps']}\n\n"
+            user_question = f"## The Question:\nAnswer the question: {state['question']}"
+
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "expert",
+                type= "instruction",
+                content= context + expert_steps + user_question,
+            )
     
     elif state["current_step"] == "critic_expert":
-        message = {
-            "sender": "orchestrator",
-            "receiver": "critic_expert",
-            "type": "instruction",
-            "content": f"Review the following expert's answer to make sure it answers the question.\n## The expert's answer: {state['expert_answer']}",
-            "step_id": None,
-        }
+        # Add context to the last message to the critic.
+        question = f"Use the following context answer the User Question:\n ## Context:\n\n### Expert Question:\n The expert was asked to answer the following question: {state['question']}\n\n"
+        context = f"### Researched Information:\nThe expert had the following researched information to use to answer the question:\n{state["research_results"]}\n\n"
+        expert_answer = f"## Expert Answer:\nThe expert gave the following response and reasoning:\nExpert answer: {state['expert_answer']}\nExpert reasoning: {state['expert_reasoning']}\n\n"
+        user_question = "## User Question:\nDoes the expert's answer actually answer the question to a satisfactory level? If yes, approve. If no, reject."
+
+        message = compose_agent_message(
+            sender= "orchestrator",
+            receiver= "critic_expert",
+            type= "instruction",
+            content= question + context + expert_answer + user_question,
+        )
     
     elif state["current_step"] == "finalizer":
-        message = {
-            "sender": "orchestrator",
-            "receiver": "finalizer",
-            "type": "instruction",
-            "content": "Generate the final answer and reasoning trace (logical steps) to answer the question.",
-            "step_id": None,
-        }
+        message = compose_agent_message(
+            sender= "orchestrator",
+            receiver= "finalizer",
+            type= "instruction",
+            content= "Generate the final answer and reasoning trace (logical steps) to answer the question.",
+        )
     
     else:
         raise ValueError(f"Invalid current step: {state['current_step']}")
     
     # Send the message
-    return send_message(state, cast(AgentMessage, message))
-
+    send_message(state, message)
+    return state
 
 def orchestrator(state: GraphState) -> GraphState:
-    """
-    Main orchestrator function that coordinates the multi-agent workflow.
+    """Orchestrator logic to coordinate the multi-agent workflow.
     Follows the 4-step process outlined in the logical design:
     1. Determine the next step
-    2. Check retry count
-    3. Execute the next step
+    2. Check retry count and handle limit exceeded
+    3. Execute the next step by setting current_step and sending message
     4. Return state
+
+    Args:
+        state (GraphState): The current state of the graph
+
+    Returns:
+        GraphState: The updated state of the graph
     """
-    try:
-        logger.info(f"Orchestrator starting execution. Current step: {state.get('current_step', 'unknown')}")
+    
+    logger.info(f"Orchestrator starting execution. Current step: {state.get('current_step', 'unknown')}")
         
-        # Check for error state first
-        if state.get("error"):
-            logger.warning(f"Error state detected: {state['error']} from {state.get('error_component', 'unknown')}")
-            # Route to finalizer if there's an error
-            state["next_step"] = "finalizer"
-            if not state.get("final_answer"):
-                state["final_answer"] = f"The question could not be answered due to an error: {state['error']}"
-            if not state.get("final_reasoning_trace"):
-                state["final_reasoning_trace"] = f"System encountered an error in {state.get('error_component', 'unknown component')}: {state['error']}"
-            return state
-        
-        # Step 1: Determine the next step
-        state = determine_next_step(state)
-        
-        # Step 2: Check retry count
-        state = check_retry_limit(state)
-        
-        # Step 3: Execute the next step
-        state = execute_next_step(state)
-        
-        # Step 4: Validate state and return
-        if not validate_state(state):
-            logger.warning("State validation failed in orchestrator")
-        
-        logger.info(f"Orchestrator completed successfully. Next step: {state.get('next_step', 'unknown')}")
-        return state
-        
-    except Exception as e:
-        logger.error(f"Orchestrator failed: {str(e)}")
-        return handle_agent_error(state, "orchestrator", e)
-
-
-def planner(state: GraphState) -> GraphState:
-    """Planner agent with error handling and validation."""
-    try:
-        logger.info("Planner starting execution")
-        
-        output_schema = {"research_steps": list[str], "expert_steps": list[str]}
-        # Accesses messages between the orchestrator and the planner only.
-        sys_prompt = [SystemMessage(content=planner_system_prompt)]
-        message_history = get_agent_conversation(state, "planner")
-        message_in = convert_agent_messages_to_langchain(message_history)
-        
-        # LLM call with error handling
-        response = llm_planner.with_structured_output(output_schema, method="json_mode").invoke(sys_prompt + message_in)
-        
-        # Validate response
-        if not validate_llm_response(response, ["research_steps", "expert_steps"], "planner"):
-            raise ValueError("Invalid LLM response structure")
-        
-        state["research_steps"] = response.get("research_steps", [])
-        state["expert_steps"] = response.get("expert_steps", [])
-
-        agent_message: AgentMessage = {
-            "sender": "planner",
-            "receiver": "orchestrator",
-            "type": "response",
-            "content": f"Plan complete.\n## The research steps are:\n{state['research_steps']}\n\n## And the expert steps are:\n{state['expert_steps']}",
-            "step_id": None,
-        }
-        state = send_message(state, agent_message)
-        
-        # Validate state after execution
-        if not validate_state(state):
-            logger.warning("State validation failed after planner execution")
-        
-        logger.info("Planner completed successfully")
-        return state
-        
-    except Exception as e:
-        logger.error(f"Planner failed: {str(e)}")
-        return handle_agent_error(state, "planner", e)
-
-
-def researcher_node(state: GraphState) -> GraphState:
-    """Researcher agent with error handling and validation."""
-    try:
-        logger.info(f"Researcher starting execution for step {state['current_research_index']}")
-        
-        idx = state["current_research_index"]
-        message_history = get_agent_conversation(state, "researcher", step_id=idx)
-        message_in = convert_agent_messages_to_langchain(message_history)
-        
-        # Get or create ResearcherState for this step
-        if idx not in state["researcher_states"]:
-            researcher_state = ResearcherState(
-                messages=message_in,
-                step_index=idx,
-                result=None
-            )
-        else:
-            researcher_state = state["researcher_states"][idx]
-            researcher_state["messages"].append(message_in[-1])
-
-        # Pass to subgraph with error handling
-        try:
-            researcher_state = cast(ResearcherState, compiled_researcher_graph.invoke(researcher_state))
-        except Exception as subgraph_error:
-            logger.error(f"Researcher subgraph failed: {str(subgraph_error)}")
-            raise subgraph_error
-            
-        state["researcher_states"][idx] = researcher_state
-        
-        # If complete, store result
-        if len(state["research_results"]) <= idx:
-            state["research_results"].append(researcher_state["result"])
-        else:
-            state["research_results"][idx] = researcher_state["result"]
-
-        # Generates a message to the orchestrator agent that the research is complete
-        agent_message: AgentMessage = {
-            "sender": "researcher",
-            "receiver": "orchestrator",
-            "type": "response",
-            "content": f"Research complete. The research results are:\n{state['research_results'][idx]}",
-            "step_id": idx,
-        }
-        state = send_message(state, agent_message)
-        
-        # Validate state after execution
-        if not validate_state(state):
-            logger.warning("State validation failed after researcher execution")
-        
-        logger.info(f"Researcher completed successfully for step {idx}")
-        return state
-        
-    except Exception as e:
-        logger.error(f"Researcher failed: {str(e)}")
-        return handle_agent_error(state, "researcher", e)
-
-
-
-def expert(state: GraphState) -> GraphState:
-    """Expert agent with error handling and validation."""
-    try:
-        logger.info("Expert starting execution")
-        
-        message_history = get_agent_conversation(state, "expert")
-        message_in = [convert_agent_messages_to_langchain(message_history)[-1]]
-        
-        expert_state = state["expert_state"]
-        if expert_state is None:
-            expert_state = ExpertState(
-                messages=message_in,
-                question=state["question"],
-                research_steps=state["research_steps"],
-                research_results=state["research_results"],
-                expert_answer="",
-                expert_reasoning="",
-            )
-        else:
-            expert_state["messages"].extend(message_in)
-            
-        # Pass to subgraph with error handling
-        try:
-            expert_state = cast(ExpertState, compiled_expert_graph.invoke(expert_state))
-        except Exception as subgraph_error:
-            logger.error(f"Expert subgraph failed: {str(subgraph_error)}")
-            raise subgraph_error
-            
-        state["expert_state"] = expert_state
-        state["expert_answer"] = expert_state["expert_answer"]
-        state["expert_reasoning"] = expert_state["expert_reasoning"]
-
-        agent_message: AgentMessage = {
-            "sender": "expert",
-            "receiver": "orchestrator",
-            "type": "response",
-            "content": f"Expert complete. The expert answer is:\n{expert_state['expert_answer']}\n\n## The reasoning trace is:\n{expert_state['expert_reasoning']}",
-            "step_id": None,
-        }
-        state = send_message(state, cast(AgentMessage, agent_message))
-        
-        # Validate state after execution
-        if not validate_state(state):
-            logger.warning("State validation failed after expert execution")
-        
-        logger.info("Expert completed successfully")
-        return state
-        
-    except Exception as e:
-        logger.error(f"Expert failed: {str(e)}")
-        return handle_agent_error(state, "expert", e)
-
-
-########################################################
-# < Critic Helper Functions >
-########################################################
-def handle_critic_planner_review(state: GraphState) -> GraphState:
-    """Handle critic review of planner's work with error handling"""
-    try:
-        logger.info("Critic planner review starting")
-        
-        output_schema = {"decision": Literal["approve", "reject"], "feedback": str}
-        
-        sys_prompt = [SystemMessage(content=critic_planner_system_prompt.format(question=state["question"]))]
-        message_history = [get_agent_conversation(state, "critic_planner")[-1]]
-        message_in = convert_agent_messages_to_langchain(message_history)
-        
-        response = llm_critic.with_structured_output(output_schema, method="json_mode").invoke(sys_prompt + message_in)
-        
-        # Validate response
-        if not validate_llm_response(response, ["decision", "feedback"], "critic_planner"):
-            raise ValueError("Invalid critic response structure")
-        
-        state["critic_planner_decision"] = response["decision"]
-        state["critic_planner_feedback"] = response["feedback"]
-        
-        planner_message: AgentMessage = {
-            "sender": "critic_planner",
-            "receiver": "orchestrator",
-            "type": "response",
-            "content": f"Critic of the planner's plan complete. The decision is:\n{response['decision']}\n\n## The feedback is:\n{response['feedback']}",
-            "step_id": None,
-        }
-        
-        logger.info(f"Critic planner review completed with decision: {response['decision']}")
-        return send_message(state, planner_message)
-        
-    except Exception as e:
-        logger.error(f"Critic planner review failed: {str(e)}")
-        return handle_agent_error(state, "critic_planner", e)
-
-
-def handle_critic_researcher_review(state: GraphState) -> GraphState:
-    """Handle critic review of researcher's work with error handling"""
-    try:
-        logger.info(f"Critic researcher review starting for step {state['current_research_index']}")
-        
-        output_schema = {"decision": Literal["approve", "reject"], "feedback": str}
-        
-        sys_prompt = [SystemMessage(content=critic_researcher_system_prompt.format(research_request=state["research_steps"][state["current_research_index"]]))]
-        message_history = [get_agent_conversation(state, "critic_researcher", step_id=state["current_research_index"])[-1]]
-        message_in = convert_agent_messages_to_langchain(message_history)
-        
-        response = llm_critic.with_structured_output(output_schema, method="json_mode").invoke(sys_prompt + message_in)
-        
-        # Validate response
-        if not validate_llm_response(response, ["decision", "feedback"], "critic_researcher"):
-            raise ValueError("Invalid critic response structure")
-        
-        state["critic_researcher_decision"] = response["decision"]
-        state["critic_researcher_feedback"] = response["feedback"]
-        
-        researcher_message: AgentMessage = {
-            "sender": "critic_researcher",
-            "receiver": "orchestrator",
-            "type": "response",
-            "content": f"Critic of the researcher's work complete. The decision is:\n{response['decision']}\n\n## The feedback is:\n{response['feedback']}",
-            "step_id": state["current_research_index"],
-        }
-        
-        logger.info(f"Critic researcher review completed with decision: {response['decision']}")
-        return send_message(state, researcher_message)
-        
-    except Exception as e:
-        logger.error(f"Critic researcher review failed: {str(e)}")
-        return handle_agent_error(state, "critic_researcher", e)
-
-
-def handle_critic_expert_review(state: GraphState) -> GraphState:
-    """Handle critic review of expert's work with error handling"""
-    try:
-        logger.info("Critic expert review starting")
-        
-        output_schema = {"decision": Literal["approve", "reject"], "feedback": str}
-        
-        sys_prompt = [SystemMessage(content=make_research_steps_and_results(critic_expert_system_prompt, state["question"], state["research_steps"], state["research_results"]))]
-        message_history = [get_agent_conversation(state, "critic_expert")[-1]]
-        message_in = convert_agent_messages_to_langchain(message_history)
-        
-        response = llm_critic.with_structured_output(output_schema, method="json_mode").invoke(sys_prompt + message_in)
-        
-        # Validate response
-        if not validate_llm_response(response, ["decision", "feedback"], "critic_expert"):
-            raise ValueError("Invalid critic response structure")
-        
-        state["critic_expert_decision"] = response["decision"]
-        state["critic_expert_feedback"] = response["feedback"]
-        
-        expert_message: AgentMessage = {
-            "sender": "critic_expert",
-            "receiver": "orchestrator",
-            "type": "response",
-            "content": f"Critic of the expert's work complete. The decision is:\n{response['decision']}\n\n## The feedback is:\n{response['feedback']}",
-            "step_id": None,
-        }
-        
-        logger.info(f"Critic expert review completed with decision: {response['decision']}")
-        return send_message(state, expert_message)
-        
-    except Exception as e:
-        logger.error(f"Critic expert review failed: {str(e)}")
-        return handle_agent_error(state, "critic_expert", e)
-
-
-def critic(state: GraphState) -> GraphState:
-    """Main critic function that routes to appropriate critic type based on current_step"""
-    try:
-        logger.info(f"Critic starting execution for step: {state['current_step']}")
-        
-        if state["current_step"] == "critic_planner":
-            result = handle_critic_planner_review(state)
-        elif state["current_step"] == "critic_researcher":
-            result = handle_critic_researcher_review(state)
-        elif state["current_step"] == "critic_expert":
-            result = handle_critic_expert_review(state)
-        else:
-            raise ValueError(f"Invalid critic step: {state['current_step']}")
-        
-        logger.info(f"Critic completed successfully for step: {state['current_step']}")
-        return result
-        
-    except Exception as e:
-        logger.error(f"Critic failed: {str(e)}")
-        return handle_agent_error(state, "critic", e)
-
-
-def finalizer(state: GraphState) -> GraphState:
-    """Finalizer agent with error handling and validation."""
-    try:
-        logger.info("Finalizer starting execution")
-        
-        output_schema = {"final_answer": str, "final_reasoning_trace": str}
-        sys_prompt = [SystemMessage(content=finalizer_system_prompt.format(question=state["question"], research_steps=state["research_steps"], expert_steps=state["expert_steps"], expert_answer=state["expert_answer"], expert_reasoning=state["expert_reasoning"]))]
-        message_history = get_agent_conversation(state, "finalizer")
-        message_in = convert_agent_messages_to_langchain(message_history)
-        
-        response = llm_finalizer.with_structured_output(output_schema, method="json_mode").invoke(sys_prompt + message_in)
-        
-        # Validate response
-        if not validate_llm_response(response, ["final_answer", "final_reasoning_trace"], "finalizer"):
-            raise ValueError("Invalid finalizer response structure")
-        
-        state["final_answer"] = response["final_answer"]
-        state["final_reasoning_trace"] = response["final_reasoning_trace"]
-        
-        agent_message: AgentMessage = {
-            "sender": "finalizer",
-            "receiver": "orchestrator",
-            "type": "response",
-            "content": f"Finalizer complete. The final answer is:\n{response['final_answer']}\n\n## The final reasoning trace is:\n{response['final_reasoning_trace']}",
-            "step_id": None,
-        }
-        state = send_message(state, agent_message)
-        
-        # Validate state after execution
-        if not validate_state(state):
-            logger.warning("State validation failed after finalizer execution")
-        
-        logger.info("Finalizer completed successfully")
-        return state
-        
-    except Exception as e:
-        logger.error(f"Finalizer failed: {str(e)}")
-        return handle_agent_error(state, "finalizer", e)
+    # Step 1: Determine the next step
+    state = determine_next_step(state)
+    
+    # Step 2: Check retry count
+    state = check_retry_limit(state)
+    
+    # Step 3: Execute the next step
+    state = execute_next_step(state)
+    
+    logger.info(f"Orchestrator completed successfully. Next step: {state.get('next_step', 'unknown')}")
+    return state
 
 ########################################################
 # < Conditional Edges >
 ########################################################
 def route_from_orchestrator(state: GraphState) -> str:
+    """Route the state to the appropriate agent based on the current step.
+
+    Args:
+        state (GraphState): The current state of the graph
+
+    Returns:
+        str: The name of the agent to route to
+    """
     if state["current_step"] == "planner":
         return "planner"
     elif state["current_step"] == "researcher":
@@ -1085,38 +807,335 @@ def route_from_orchestrator(state: GraphState) -> str:
         raise ValueError(f"Invalid current step: {state['current_step']}")
 
 ########################################################
-# < Graph Construction >
+# < Graph Factory Function >
 ########################################################
 
-builder = StateGraph(GraphState)
+def create_planner_agent(config: AgentConfig, llm_planner: ChatOpenAI) -> Callable[[GraphState], GraphState]:
+    """Create a planner agent function with the given prompt and LLM."""
+    #llm_planner.with_structured_output(output_schema, method="json_mode").
+    #output_schema = {"research_steps": list[str], "expert_steps": list[str]}
+    def planner_agent(state: GraphState) -> GraphState:
+        """Planner agent with injected prompt."""
+        logger.info("Planner starting execution")
+        
+        sys_prompt = [SystemMessage(content=config.system_prompt)]
+        message_history = get_agent_conversation(state, "planner")
+        message_in = convert_agent_messages_to_langchain(message_history)
+        
+        response = llm_planner.invoke(sys_prompt + message_in)
+        
+        # Validate response
+        response = validate_llm_response(response, config.output_schema.keys(), "planner")
+        
+        state["research_steps"] = response["research_steps"]
+        state["expert_steps"] = response["expert_steps"]
+        
+        agent_message = compose_agent_message(
+            sender= "planner",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Planner complete. Research steps: {response['research_steps']}, Expert steps: {response['expert_steps']}",   
+        )
+        state = send_message(state, agent_message)
+        
+        
+        logger.info("Planner completed successfully")
+        return state    
+    return planner_agent
 
-builder.add_node("input_interface", input_interface)
-builder.add_node("orchestrator", orchestrator)
-builder.add_node("planner", planner)
-builder.add_node("researcher", researcher_node)
-builder.add_node("expert", expert)
-builder.add_node("critic", critic)
-builder.add_node("finalizer", finalizer)
+   
+def create_researcher_agent(config: AgentConfig, compiled_researcher_graph:Callable) -> Callable[[GraphState], GraphState]:
+    """Create a researcher agent function with the given prompt and LLM."""
+    # Create the researcher subgraph with the injected prompt
+     #compiled_researcher_graph = create_researcher_subgraph(researcher_prompt, llm_researcher_with_tools, research_tools)
+    
+    def researcher_agent(state: GraphState) -> GraphState:
+        """Researcher agent with injected prompt."""
+        logger.info("Researcher starting execution")
+        
+        idx = state["current_research_index"]
+        message_history = get_agent_conversation(state, "researcher", step_id=idx)
+        message_in = convert_agent_messages_to_langchain(message_history)
+        
+        # Get or create ResearcherState for this step
+        if idx not in state["researcher_states"]:
+            researcher_state = ResearcherState(
+                messages=message_in,
+                step_index=idx,
+                result=None
+            )
+        else:
+            researcher_state = state["researcher_states"][idx]
+            researcher_state["messages"].append(message_in[-1])
 
-builder.add_edge(START, "input_interface")
-builder.add_edge("input_interface", "orchestrator")
-builder.add_edge("planner", "orchestrator")
-builder.add_edge("researcher", "orchestrator")
-builder.add_edge("expert", "orchestrator")
-builder.add_edge("critic", "orchestrator")
-builder.add_edge("finalizer", END)
+        # Execute research using subgraph
+        researcher_state = compiled_researcher_graph.invoke(researcher_state)
+        
+        # Validate response
+        response = validate_llm_response(researcher_state["messages"][-1].content, config.output_schema.keys(), f"researcher step {state['current_research_index']}")
+        # Store response in ResearcherState in case of text JSON response
+        researcher_state["result"] = response["result"]
 
-builder.add_conditional_edges("orchestrator", route_from_orchestrator, {
-        "planner": "planner",
-        "researcher": "researcher",
-        "expert": "expert",
-        "critic": "critic",
-        "finalizer": "finalizer"
-        }
-    )
+        # Update ResearcherState in state
+        state["researcher_states"][idx] = researcher_state
 
-graph = builder.compile()
+        # Store results
+        if len(state["research_results"]) <= idx:
+            state["research_results"].append(response["result"])
+        else:
+            state["research_results"][idx] = response["result"]
+
+        # Send response to orchestrator
+        agent_message = compose_agent_message(
+            sender= "researcher",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Researcher complete for step {state['current_research_index']}",
+            step_id= state["current_research_index"],
+        )
+        state = send_message(state, agent_message)
+        
+
+        logger.info("Researcher completed successfully")
+        return state
+    return researcher_agent
 
 
-#state = graph.invoke({"messages": [HumanMessage(content="What is CRISPR? And who invented it?")]}, {"recursion_limit": 100})
-#print(state)
+def create_expert_agent(config: AgentConfig, compiled_expert_graph:Callable) -> Callable[[GraphState], GraphState]:
+    """Create an expert agent function with the given prompt and LLM."""
+    # Create the expert subgraph with the injected prompt
+    #compiled_expert_graph = create_expert_subgraph(expert_prompt, llm_expert_with_tools, expert_tools)
+    
+    def expert_agent(state: GraphState) -> GraphState:
+        """Expert agent with injected prompt."""
+        logger.info("Expert starting execution")
+
+        message_history = get_agent_conversation(state, "expert")
+        message_in = [convert_agent_messages_to_langchain(message_history)[-1]]
+        
+        expert_state = state["expert_state"]
+        if expert_state is None:
+            expert_state = ExpertState(
+                messages=message_in,
+                question=state["question"],
+                research_steps=state["research_steps"],
+                research_results=state["research_results"],
+                expert_answer="",
+                expert_reasoning="",
+            )
+        else:
+            expert_state["messages"].extend(message_in)
+
+        # Execute expert reasoning using subgraph
+        expert_state = compiled_expert_graph.invoke(expert_state)
+
+        # Validate response
+        response = validate_llm_response(expert_state["messages"][-1].content, config.output_schema.keys(), "expert")
+        
+        # Store response in ExpertState in case of text JSON response
+        expert_state["expert_answer"] = response["expert_answer"]
+        expert_state["expert_reasoning"] = response["expert_reasoning"]
+
+        # Update ExpertState in state
+        state["expert_state"] = expert_state
+
+        # Store results
+        state["expert_answer"] = response["expert_answer"]
+        state["expert_reasoning"] = response["expert_reasoning"]
+        
+        agent_message = compose_agent_message(
+            sender= "expert",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Expert complete. Answer: {expert_state['expert_answer']}, Reasoning: {expert_state['expert_reasoning']}",
+        )
+        state = send_message(state, agent_message)
+        
+        
+        logger.info("Expert completed successfully")
+        return state
+    
+    return expert_agent
+
+
+def create_critic_agent(config: AgentConfig, llm_critic: ChatOpenAI) -> Callable[[GraphState], GraphState]:
+    """Create a critic agent function with the given prompts for different critic types."""
+    def critic_agent(state: GraphState) -> GraphState:
+        """Critic agent with injected prompts for different critic types."""
+        logger.info("Critic starting execution")
+
+
+        # Determine which critic to run and get the appropriate prompt
+        if state["current_step"] == "critic_planner":
+            critic_prompt = config.system_prompt["critic_planner"]
+        elif state["current_step"] == "critic_researcher":
+            critic_prompt = config.system_prompt["critic_researcher"]
+        elif state["current_step"] == "critic_expert":
+            critic_prompt = config.system_prompt["critic_expert"]
+        else:
+            raise RuntimeError(f"Invalid critic step: {state['current_step']}")
+        
+        sys_prompt = [SystemMessage(content=critic_prompt)]
+        message_history = get_agent_conversation(state, state["current_step"])
+        message_in = [convert_agent_messages_to_langchain(message_history)[-1]]
+
+        response = llm_critic.invoke(sys_prompt + message_in)
+        
+        # Validate response
+        response = validate_llm_response(response, config.output_schema.keys(), "critic")
+        
+        # Store critic decision and feedback based on current step
+        if state["current_step"] == "critic_planner":
+            state["critic_planner_decision"] = response["decision"]
+            state["critic_planner_feedback"] = response["feedback"]
+        elif state["current_step"] == "critic_researcher":
+            state["critic_researcher_decision"] = response["decision"]
+            state["critic_researcher_feedback"] = response["feedback"]
+        elif state["current_step"] == "critic_expert":
+            state["critic_expert_decision"] = response["decision"]
+            state["critic_expert_feedback"] = response["feedback"]
+        
+        message = compose_agent_message(
+            sender= "critic",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Critic complete. Decision: {response['decision']}, Feedback: {response['feedback']}",
+        )
+        state = send_message(state, message)
+        
+        
+        logger.info("Critic completed successfully")
+        return state
+    
+    return critic_agent
+
+
+def create_finalizer_agent(config: AgentConfig, llm_finalizer: ChatOpenAI) -> Callable[[GraphState], GraphState]:
+    """Create a finalizer agent function with the given prompt and LLM."""
+    def finalizer_agent(state: GraphState) -> GraphState:
+        """Finalizer agent with injected prompt."""
+        logger.info("Finalizer starting execution")
+        
+        sys_prompt = [SystemMessage(content=config.system_prompt)]
+        message_history = get_agent_conversation(state, "finalizer")
+        message_in = convert_agent_messages_to_langchain(message_history)
+        
+        response = llm_finalizer.invoke(sys_prompt + message_in)
+        
+        # Validate response
+        response = validate_llm_response(response, config.output_schema.keys(), "finalizer")
+        
+        state["final_answer"] = response["final_answer"]
+        state["final_reasoning_trace"] = response["final_reasoning_trace"]
+        
+        message = compose_agent_message(
+            sender= "finalizer",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Finalizer complete. The final answer is:\n{response['final_answer']}\n\n## The final reasoning trace is:\n{response['final_reasoning_trace']}",
+        )
+        state = send_message(state, message)
+        
+        logger.info("Finalizer completed successfully")
+        return state    
+    return finalizer_agent
+
+
+def openai_llm_factory(model: str, temperature: float, output_schema: dict) -> ChatOpenAI:
+    """Create an OpenAI LLM with the given model and temperature.
+
+    Args:
+        model (str): The model to use
+        temperature (float): The temperature to use
+        output_schema (dict): The output schema to use (JSON schema)
+    """
+    llm = ChatOpenAI(model=model, temperature=temperature)
+    llm = llm.with_structured_output(output_schema, method="json_mode")
+    return llm
+
+
+def llm_factory(config:AgentConfig) -> ChatOpenAI:
+    """Get the appropriate LLM factory based on the provider.
+
+    Args:
+        config (AgentConfig): The configuration for the agent
+
+    Returns:
+        ChatOpenAI: The LLM with structured output
+    """
+    if config.provider == "openai":
+        return openai_llm_factory(config.model, config.temperature, config.output_schema)
+    else:
+        raise ValueError(f"Invalid provider: {config.provider}")
+
+
+def create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> StateGraph:
+    """
+    Factory function that creates and compiles a multi-agent graph with injected prompts.
+    
+    Args:
+        agent_configs (dict[str, AgentConfig]): Dictionary containing all agent configs
+        
+    Returns:
+        Compiled graph ready for invocation
+    """
+
+    # Create LLMs dynamically
+    llm_planner = llm_factory(agent_configs["planner"])
+    llm_researcher = llm_factory(agent_configs["researcher"])
+    llm_expert = llm_factory(agent_configs["expert"])
+    llm_critic = llm_factory(agent_configs["critic"])
+    llm_finalizer = llm_factory(agent_configs["finalizer"])   
+   
+    # Create Researcher Subgraphs
+    research_tools = asyncio.run(get_research_tools())
+    llm_researcher = llm_researcher.bind_tools(research_tools)
+    researcher_node = create_researcher_llm_node(agent_configs["researcher"], llm_researcher, research_tools)
+    researcher_graph = create_researcher_subgraph(researcher_node, research_tools)
+    
+    # Create Expert Subgraphs
+    expert_tools = get_expert_tools()
+    llm_expert = llm_expert.bind_tools(expert_tools)
+    expert_node = create_expert_llm_node(agent_configs["expert"], llm_expert)
+    expert_graph = create_expert_subgraph(expert_node, expert_tools)
+
+    # Create agent functions with injected prompts and LLMs
+    planner_agent = create_planner_agent(agent_configs["planner"], llm_planner)
+    researcher_agent = create_researcher_agent(agent_configs["researcher"], researcher_graph)
+    expert_agent = create_expert_agent(agent_configs["expert"], expert_graph)
+    critic_agent = create_critic_agent(agent_configs["critic"], llm_critic)
+    finalizer_agent = create_finalizer_agent(agent_configs["finalizer"], llm_finalizer)
+    
+    # Create input interface with retry limit
+    input_interface = create_input_interface(agent_configs)
+    
+    # Build the graph
+    builder = StateGraph(GraphState)
+    
+    builder.add_node("input_interface", input_interface)
+    builder.add_node("orchestrator", orchestrator)
+    builder.add_node("planner", planner_agent)
+    builder.add_node("researcher", researcher_agent)
+    builder.add_node("expert", expert_agent)
+    builder.add_node("critic", critic_agent)
+    builder.add_node("finalizer", finalizer_agent)
+    
+    builder.add_edge(START, "input_interface")
+    builder.add_edge("input_interface", "orchestrator")
+    builder.add_edge("planner", "orchestrator")
+    builder.add_edge("researcher", "orchestrator")
+    builder.add_edge("expert", "orchestrator")
+    builder.add_edge("critic", "orchestrator")
+    builder.add_edge("finalizer", END)
+    
+    builder.add_conditional_edges("orchestrator", route_from_orchestrator, {
+            "planner": "planner",
+            "researcher": "researcher",
+            "expert": "expert",
+            "critic": "critic",
+            "finalizer": "finalizer"
+            }
+        )
+    
+    # Compile and return the graph
+    return builder.compile()

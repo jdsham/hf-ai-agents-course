@@ -164,7 +164,7 @@ The system integrates with multiple external services and tools:
 **High-Level Technology Stack:**
 - **LangGraph**: Graph-based workflow orchestration and state management
 - **LangChain**: Multi-agent framework for LLM integration and tool management
-- **Structlog**: Structured logging framework for observability and traceability
+- **Python Standard Library Logging**: Simple logging framework for observability and traceability
 - **Python 3.10+**: Runtime environment and language features
 
 **Key Architectural Approach:**
@@ -195,6 +195,7 @@ The system uses **graph-based workflow orchestration** with **multi-agent coordi
 - **Tool Framework**: LangChain tool framework for safe tool execution
 - **Configuration Management**: Environment variables for API keys and settings
 - **Error Handling**: Comprehensive error handling with retry logic and fail-fast termination
+- **Logging Integration**: Python standard library logging for basic observability and debugging
 
 
 ### 1.5 Diagrams
@@ -342,7 +343,7 @@ graph TB
     
     %% System Boundary
     subgraph SystemBoundary["Multi-Agent System"]
-        placeholder[Multi-Agent System<br/>See Diagram 1.3b]
+        placeholder[Multi-Agent System<br/>See Diagram 1.2]
     end
     
     %% Data Flow
@@ -482,7 +483,7 @@ The system architecture is designed to achieve specific quality attributes that 
 - **Clear Interfaces**: Standardized message protocols and component interfaces
 - **Documentation**: Comprehensive architectural documentation and code comments
 - **Consistent Patterns**: Uniform use of design patterns throughout the system
-- **Structured Logging**: Structlog provides consistent logging patterns and debugging capabilities across all components
+- **Simple Logging**: Python standard library logging provides basic logging patterns and debugging capabilities across all components
 
 **Extensibility:**
 - **Plugin Architecture**: Easy addition of new tools and capabilities
@@ -558,7 +559,35 @@ The system consists of a main graph with all agents, where complex agents use su
 - **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
 
 
-### 2.5 Diagrams
+### 2.5 Logging Architecture
+
+The system uses Python's standard library logging for simple, consistent logging across all components.
+
+**Logging Configuration:**
+- **Basic Configuration**: Standard logging setup with INFO level and timestamp format
+- **Single Logger**: All components use the same logger instance from the main module
+- **Log Format**: Standard format with timestamp, logger name, level, and message
+- **Log Levels**: INFO for normal operations, WARNING for issues, ERROR for failures
+
+**Logging Implementation:**
+- **Entry Point**: Standard library logging in main.py covering entire run (entry point + multi-agent system)
+- **Multi-Agent System**: Comprehensive logging throughout all components using Python standard library
+- **Component Logging**: Each agent and component logs start/completion and errors
+- **Error Logging**: Detailed error messages with component identification
+- **State Validation**: Logging for state validation failures and warnings
+
+**Logging Patterns:**
+- **Start/Completion**: Each component logs when it starts and completes execution
+- **Error Handling**: All errors are logged with detailed error messages
+- **Workflow Progression**: Orchestrator logs workflow state transitions
+
+**Logging Benefits:**
+- **Debugging**: Simple text logs enable easy debugging and troubleshooting
+- **Monitoring**: Basic operational monitoring through log output
+- **Error Tracking**: Comprehensive error logging for failure analysis
+- **Standard Library**: No external dependencies, uses Python's built-in logging
+
+### 2.6 Diagrams
 **Diagram 2.1: Level 2 System Context Diagram -- Multi-Agent System Architecture** - Technical view showing subgraph patterns
 ```mermaid
 graph TB
@@ -654,6 +683,7 @@ graph TB
 - Quality attributes (reliability, maintainability, extensibility, testability, performance) are achieved through specific architectural mechanisms
 - Graph-based architecture with subgraph patterns enables complex workflow orchestration and tool integration
 - **Node vs Agent Architecture**: Clear distinction between main graph nodes (orchestration/management) and subgraph agents (task execution)
+- **Simple Logging Architecture**: Python standard library logging provides basic observability and debugging capabilities across all components
 
 ---
 
@@ -1035,7 +1065,7 @@ The system implements specific state management patterns:
 - **Direct Agent State Access**: Direct agents (Planner, Critic, Finalizer) share access to main graph state variables where appropriate
 - **Subgraph Agent State Access**: Subgraph agents (Researcher Agent, Expert Agent) only access their respective subgraph states
 - **Direct State Updates**: Planner, Critic, and Finalizer agents directly access and update the main graph state with their results
-- **Orchestrator State Management**: Orchestrator updates the main graph state for workflow management (current_step, next_step, retry_count, current_research_step_id, etc.)
+- **Orchestrator State Management**: Orchestrator updates the main graph state for workflow management (current_step, next_step, retry_counts, current_research_step_id, etc.)
 - **Main Graph Node State Management**: Main graph nodes (Researcher Node, Expert Node) handle dynamic creation, management, and updating of their respective subgraph states
 - **Subgraph State Access**: Subgraph states are accessible by both their respective subgraphs and the main graph nodes that manage them
 - **State Extraction and Integration**: Main graph nodes extract information from subgraph states and update main graph state variables
@@ -1191,16 +1221,15 @@ The multi-agent system is built on a foundation of modern Python frameworks and 
 - **Usage**: State validation, message validation, configuration validation
 - **Benefits**: Ensures data integrity, catches errors early, improves system reliability
 
-**Structlog: Structured Logging and Observability**
-- **Purpose**: Structured logging framework for comprehensive observability and traceability
+**Python Standard Library Logging: Simple Logging and Observability**
+- **Purpose**: Simple logging framework for basic observability and traceability
 - **Key Features**:
-  - Structured JSON logging with correlation ID support
-  - Configurable log levels and output formats
-  - Context-aware logging with automatic field injection
-  - Performance monitoring and metrics collection
-  - Security-conscious design with sensitive data filtering
-- **Usage**: Entry point logging, multi-agent system logging, correlation-based tracing
-- **Benefits**: Enables complete traceability, rapid debugging, and operational monitoring
+  - Standard Python logging with configurable log levels
+  - Simple text-based log output with timestamps
+  - Basic error, warning, and info level logging
+  - Standard logging format with component identification
+- **Usage**: Entry point logging, multi-agent system logging, error tracking
+- **Benefits**: Simple implementation, standard Python library, basic debugging capabilities
 
 **Python 3.10+: Runtime Environment and Language Features**
 - **Purpose**: Runtime environment and language features
@@ -1735,7 +1764,7 @@ The system uses a centralized configuration system that specifies parameters and
 **Configuration Definition:**
 - **Purpose**: Specifies configuration parameters and system prompts for agents for the entire graph
 - **Scope**: Configures specific parameters of the graph that must be set before graph compilation
-- **Values**: Agent-specific retry limits, LLM temperatures for specific agents, and agent system prompts
+- **Values**: Agent-specific LLM Provider, provider model, retry limits, LLM temperatures, and agent system prompts
 
 **Configuration Usage:**
 - **Runtime Construction**: Configuration is constructed at runtime of the entry point
@@ -1745,24 +1774,6 @@ The system uses a centralized configuration system that specifies parameters and
 - **Entry Point Definition**: Configuration is defined in the entry point script
 - **Hard-coded Values**: Retry limits and temperatures are hard-coded specified in the entry point script
 - **File-based Prompts**: System prompts are loaded from external files
-
-**Configuration Format:**
-- **Structure**: JSON or Python dictionaries with the following structure:
-  ```python
-  config = {
-      "agent_retry_limits": dict[str, int],
-      "llm_temperatures": dict[str, float], 
-      "system_prompts": dict[str, str]
-  }
-  ```
-- **Agent Retry Limits Keys**: planner, researcher, expert
-- **LLM Temperatures Keys**: planner, researcher, expert, critic, finalizer
-- **System Prompts Keys**: planner, researcher, expert, finalizer, critic_planner, critic_researcher, critic_expert
-
-**Configuration Validation:**
-- **Required Keys**: config must contain agent_retry_limits, llm_temperatures, system_prompts
-- **Sub-dictionary Keys**: Only allowed values are accepted for each sub-dictionary
-- **Type Checking**: Correct sub-dictionary values are type checked for validation
 
 **Configuration Management:**
 - **No Versioning**: There is no versioning or management system for configuration
@@ -1776,60 +1787,52 @@ The system uses a centralized configuration system that specifies parameters and
 The system uses a factory pattern to dynamically construct the multi-agent workflow graph and inject configuration and prompts.
 
 **Factory Function Responsibilities:**
-- **Configuration Assignment**: Assigns retry limits, LLM temperatures, and agent system prompts to the graph definition from supplied configuration
+- **Configuration Assignment**: Assigns all configuration parameters when constructing the graph
 - **Graph Construction**: Builds the main graph and all subgraphs (Researcher, Expert) based on assigned configuration
-- **Agent Instantiation**: Creates each agent node with injected configuration and prompt
+- **Agent Instantiation**: Instantiates each agent's LLM based on the provider and model to use.
 - **Prompt Injection**: Loads and injects the correct prompt for each agent, including critic variants, when building the graph
 - **Tool Binding**: Binds the correct set of tools to each agent based on configuration
 - **Validation**: Ensures all required configuration and prompts are present and valid
 
 **Dynamic Graph Creation Flow:**
 1. **Entry Point**: Main script constructs configuration and loads prompts
-2. **Configuration Supply**: Entry point supplies configuration and prompts to factory function
-3. **Factory Call**: Passes configuration and prompt objects to the factory function
-4. **Configuration Assignment**: Factory assigns retry limits, temperatures, and prompts to graph definition
-5. **Graph Assembly**: Factory creates all agent nodes, subgraphs, and edges based on assigned configuration
-6. **Prompt Injection**: Prompts are injected into agents when building the graph
+2. **Configuration Supply**: Entry point assembles the graph configuration
+3. **Factory Call**: Passes graph configuration to the factory function
+4. **Configuration Assignment**: Factory assigns LLM Provider & Models, temperature, system prompts, output schemas, and retry limits.
+5. **Prompt Injection**: Agent System Prompts are injected into agents when building the graph
+6. **Graph Assembly**: Factory creates all agent nodes, subgraphs, and edges based on assigned configuration
 7. **Graph Compilation**: Returns a fully configured, ready-to-run workflow graph
-8. **Single Compilation**: Graph is compiled once and reused for all questions
-9. **Per-Question Invocation**: Compiled graph is invoked once per question with isolated state
 
 **Error Handling:**
 - **Validation Errors**: Missing or invalid configuration/prompt triggers clear errors.
-- **Fallbacks**: Defaults are used if optional configuration is missing.
+
 
 **Required Diagrams**: 
 - **Diagram 6.1: Configuration & Factory Pattern Diagram** - Factory pattern implementation and configuration flow
 
 ```mermaid
 graph TB
-    %% Configuration Inputs
+    %% Graph Configuration
     subgraph ConfigInputs["Configuration Inputs"]
-        RetryLimits[Retry Limits<br/>Hard-coded values]
-        Temperatures[Temperature Settings<br/>Per agent type]
-        Models[Model Selection<br/>GPT-4o vs GPT-4o-mini]
-    end
-    
-    %% Prompt Inputs
-    subgraph PromptInputs["Prompt Inputs"]
+        RetryLimits[Agent Retry Limits]
+        LLMProvider[Agent LLM Providers]
+        Models[Model Selections<br/>GPT-4o vs GPT-4o-mini]
         SystemPrompts[System Prompts<br/>External files]
-        AgentPrompts[Agent Prompts<br/>Per agent type]
-        CriticPrompts[Critic Prompts<br/>Per workflow step]
+        OutputSchemas[Agent LLM Output Schemas]
     end
     
     %% Factory Pattern Implementation
     subgraph FactoryPattern["Factory Pattern Implementation"]
         EntryPoint[Entry Point Script]
         ConfigBuilder[Configuration Builder]
-        PromptLoader[Prompt Loader]
         Factory[Factory Function]
         GraphBuilder[Graph Builder]
     end
     
     %% Graph Building Process
     subgraph GraphBuilding["Graph Building Process"]
-        AgentCreation[Agent Creation<br/>with injected LLM & System Prompt]
-        StateDefaults[Default Graph State<br/>with retry limits]
+        LLMCreation[LLM Creation]
+        AgentCreation[Agent Creation<br> w/System Prompts <br> & Output Schemas]
         GraphAssembly[Graph Assembly<br/>Nodes, Edges, Subgraphs]
     end
     
@@ -1840,22 +1843,19 @@ graph TB
     
     %% Factory Pattern Flow
     ConfigInputs --> EntryPoint
-    PromptInputs --> EntryPoint
     
     EntryPoint --> ConfigBuilder
-    EntryPoint --> PromptLoader
-    
+
     ConfigBuilder --> Factory
-    PromptLoader --> Factory
     
     Factory --> GraphBuilder
     
+    GraphBuilder --> LLMCreation
     GraphBuilder --> AgentCreation
-    GraphBuilder --> StateDefaults
     GraphBuilder --> GraphAssembly
     
+    LLMCreation --> CompiledGraph
     AgentCreation --> CompiledGraph
-    StateDefaults --> CompiledGraph
     GraphAssembly --> CompiledGraph
     
     %% Styling - Oceanic/Dark Theme Friendly
@@ -1923,7 +1923,7 @@ The main entry point script is responsible for initializing the system, construc
 - Centralized configuration system specifies parameters and system prompts for the entire graph
 - Configuration is constructed at runtime by entry point and consumed by factory for graph compilation
 - Factory pattern assigns retry limits, temperatures, and prompts to graph definition before compilation
-- Entry point constructs configuration with hard-coded values and loads prompts from external files
+- Entry point constructs configuration
 - Single graph compilation with per-question invocation ensures efficient batch processing
 - Complete question isolation prevents state crossing and maintains privacy
 - Clean output interface with graph state return and entry point extraction
@@ -1977,16 +1977,16 @@ The system implements a robust error handling architecture to ensure reliability
 - **Error Details Capture:** Error logs include exception type, message, stack trace, and any relevant state information for debugging
 
 **Error Logging Integration:**
-- **Structured Error Logging:** All errors are logged using the Structlog framework described in section 7.3 with correlation IDs for traceability
-- **Error Context Capture:** Error logs include component identification, workflow state, correlation ID, and error severity level
-- **Error Correlation:** Error logs are linked to specific workflow states and agent actions for comprehensive debugging
-- **Security-Conscious Error Logging:** Error details are logged without exposing sensitive data or internal system information
+- **Simple Error Logging:** All errors are logged using Python standard library logging with component identification
+- **Error Context Capture:** Error logs include component identification, workflow state, and error details
+- **Error Tracking:** Error logs provide basic debugging information for troubleshooting
+- **Basic Error Logging:** Error details are logged without exposing sensitive data
 
 **Multi-Agent System Error Handling:**
-- **Node and Edge Execution Logging:** Main graph and subgraph nodes and edges log the start and completion of execution (INFO level)
-- **Error Catching and Logging:** All nodes and edges implement error catching and logging before triggering runtime termination
-- **Standard Log Levels:** System uses standard log levels (INFO, WARN, ERROR, DEBUG) for comprehensive logging coverage
-- **Execution Traceability:** Each node and edge execution is logged with start and completion timestamps for performance analysis
+- **Component Execution Logging:** Main graph and subgraph components log the start and completion of execution (INFO level)
+- **Error Catching and Logging:** All components implement error catching and logging before triggering runtime termination
+- **Standard Log Levels:** System uses standard log levels (INFO, WARN, ERROR) for basic logging coverage
+- **Basic Execution Tracking:** Each component execution is logged with start and completion messages
 
 **Entry Point Error Handling:**
 - **Configuration Error Handling:** Entry point catches and logs errors during configuration gathering/assembly
@@ -2122,149 +2122,55 @@ graph TD
     class GracefulFailure failure
 ```
 
-### 7.3 Logging & Observability
+### 7.3 Logging
 
 **Prerequisites**: Sections 7.1-7.2 (Error Handling & Quality Assurance)  
 **Dependencies**: Referenced by Section 8 (Architectural Decisions)
 
 #### 7.3.1 Logging Strategy Overview
 
-The system implements a comprehensive logging strategy to establish traceability and observability across the multi-agent workflow. This strategy enables operational monitoring, debugging, and performance analysis while maintaining security and privacy standards.
+The system implements a simple logging strategy using Python's standard library logging for basic observability and debugging across the multi-agent workflow.
 
 **Logging Architecture Principles:**
-- **Correlation-Based Tracing**: Each question processing run is assigned a unique correlation ID that links all log entries across the workflow
-- **Hierarchical Organization**: Logs are organized by run, with separate directories for entry point and multi-agent system components
-- **Security-Conscious Design**: Logging avoids sensitive data exposure while capturing sufficient context for debugging and monitoring
-- **Standardized Format**: Consistent log message structure with standardized prefixes and separated variable values
-- **Comprehensive Coverage**: All significant system events, state changes, and error conditions are logged
-- **Standard Log Levels**: System uses standard log levels INFO and ERROR for comprehensive logging coverage
+- **Unified Standard Library Logging**: Python standard library logging used throughout the entire system
+- **Comprehensive Run Coverage**: Logging covers entry point script AND multi-agent system in a single log
+- **Basic Configuration**: Standard logging setup with INFO level and timestamp format
+- **Component Identification**: Each log entry includes component name for easy debugging
+- **Standard Log Levels**: System uses standard log levels (INFO, WARN, ERROR) for basic coverage
+- **Error Tracking**: All errors are logged with component identification and error details
 
 **Observability Goals:**
-- **Request Tracing**: Complete visibility into question processing from entry point through final answer generation
-- **Performance Monitoring**: Execution time tracking for agents, tools, and workflow steps
-- **Error Correlation**: Linking errors to specific workflow states and agent actions
-- **Quality Metrics**: Tracking critic decisions, retry patterns, and success rates
-- **Operational Insights**: System health monitoring and capacity planning
+- **Comprehensive Run Visibility**: Complete visibility into entire run from entry point through multi-agent system
+- **Basic Debugging**: Simple text logs enable easy debugging and troubleshooting
+- **Error Tracking**: Comprehensive error logging for failure analysis
+- **Component Monitoring**: Basic operational monitoring through log output
+- **Standard Library**: No external dependencies, uses Python's built-in logging
 
-#### 7.3.2 Logging Architecture Components
+#### 7.3.2 Logging Implementation
 
-**Entry Point Logging Layer:**
-- **Purpose**: Captures batch processing lifecycle, configuration loading, and entry point errors
-- **Scope**: Question processing initiation, configuration validation, batch progress tracking
-- **Log Levels**: INFO for normal operations, ERROR for failures, WARN for potential issues, DEBUG for detailed debugging
-- **Key Events**: 
-  - Configuration gathering/assembly start and finish (INFO)
-  - Prompt loading start and finish (INFO)
-  - Factory function creation (INFO)
-  - Start and completion of each question processing as part of batch processing (INFO)
-  - Error conditions during configuration, prompt loading, factory creation, and batch processing (ERROR)
-- **Error Handling**: Entry point catches and logs errors for all logged areas before system termination
+**Entry Point Logging:**
+- **Standard Library Logging**: Entry point (main.py) uses Python's standard library logging for the entire run
+- **Comprehensive Run Logging**: Logs cover all actions in the entry point script AND the multi-agent system
+- **Sequential Question Logging**: Covers the entire run including sequential question answering that invokes the multi-agent system once per question
+- **Standard Text-Based Logging**: Logs are stored using Python's standard library logging capabilities
 
-**Multi-Agent System Logging Layer:**
-- **Purpose**: Tracks workflow execution, agent interactions, and system state changes
-- **Scope**: Graph state transitions, agent execution, critic decisions, tool usage, error handling
-- **Log Levels**: INFO for workflow progression, ERROR for failures, WARN for retries and critic rejections, DEBUG for detailed debugging
-- **Key Events**: 
-  - Main graph and subgraph nodes and edges execution start and completion (INFO)
-  - Agent execution start/completion, state transitions, critic decisions, tool invocations
-  - Error conditions with comprehensive error catching and logging before runtime termination
-- **Node and Edge Logging**: Each node and edge in the main graph and subgraphs logs execution start and completion
-- **Error Handling**: All nodes and edges implement error catching and logging before triggering runtime termination
+**Multi-Agent System Logging:**
+- **Component Logging**: Each agent and component logs start/completion and errors
+- **Error Logging**: Detailed error messages with component identification
+- **State Validation**: Logging for state validation failures and warnings
+- **Tool Execution**: Tool operations are logged for debugging purposes
+- **Workflow Progression**: Orchestrator logs workflow state transitions
 
-**Correlation ID Management:**
-- **Generation**: Unique correlation ID created at entry point for each question processing run
-- **Propagation**: Correlation ID passed through entire workflow and included in all log entries
-- **Storage**: Correlation ID stored in dedicated file for easy lookup and trace reconstruction
-- **Lifetime**: Correlation ID persists for entire question processing lifecycle
+**Logging Patterns:**
+- **Start/Completion**: Each component logs when it starts and completes execution
+- **Error Handling**: All errors are logged with detailed error messages
+- **Workflow Progression**: Orchestrator logs workflow state transitions
 
-**Log Organization Structure:**
-- **Run-Based Organization**: Each processing run creates dedicated directory with correlation ID
-- **Component Separation**: Separate log files for entry point and multi-agent system components
-- **Hierarchical Context**: Parent-child relationships between runs, questions, and workflow steps
-
-#### 7.3.3 Logging Content Strategy
-
-**Event Categorization:**
-- **Workflow Events**: State transitions, step completions, workflow progression
-- **Agent Events**: Execution start/completion, tool usage, output generation
-- **Quality Events**: Critic decisions, retry attempts, feedback generation
-- **Error Events**: Failures, exceptions, error conditions with context (see section 7.1 for error handling details)
-- **Performance Events**: Execution times, resource usage, API call metrics
-- **Node/Edge Events**: Main graph and subgraph node and edge execution start/completion
-
-**Context Information:**
-- **Correlation ID**: Links all events within a single question processing run
-- **Component Identification**: node or edge name, workflow step, critical context for event attribution
-- **State Information**: Current workflow state, step progression, retry counts
-- **Performance Metrics**: Execution times, success rates, error frequencies
-- **Security Context**: Sanitized configuration, API endpoints, error types
-
-**Error Logging Architecture:**
-- **Error Event Capture**: All errors from section 7.1 error handling are captured as structured log events
-- **Error Context Enrichment**: Error logs include correlation ID, component, workflow state, and error details
-- **Error Traceability**: Error logs are linked to specific workflow steps and agent actions for debugging
-- **Error Analysis Support**: Error logs support correlation-based queries and trend analysis for operational monitoring
-
-**Security and Privacy Considerations:**
-- **Sensitive Data Exclusion**: No API keys, passwords, or personal information in logs
-- **Sanitized Configuration**: Log configuration structure without exposing sensitive values
-- **Error Context**: Include error types and components without exposing internal data
-- **Access Control**: Log files stored with appropriate permissions and access controls
-
-#### 7.3.4 Log Management and Storage
-
-**Storage and Retention:**
-- **Local Storage**: Logs stored in organized directory structure with run-based organization
-- **Log Files**: Entry point and multi-agent system logs stored separately for component isolation
-- **Correlation ID Storage**: Dedicated file for correlation ID lookup and trace reconstruction
-
-#### 7.3.5 Logging Architecture Diagrams
-**Required Diagrams**: 
-- **Diagram 7.3: Logging Architecture Diagram** - Logging components, correlation flow, and storage organization
-
-```mermaid
-graph TD
-    Start([Question Processing Start])
-    
-    subgraph "Correlation ID Generation"
-        CorrIDGen["🔑 Generate Correlation ID"]
-    end
-    
-    subgraph "Entry Point Logging"
-        EntryLogger["📝 Entry Point Logger<br/>• Configuration gathering/assembly<br/>• Prompt loading<br/>• Factory function creation<br/>• Batch processing lifecycle<br/>• Entry point errors"]
-    end
-    
-    subgraph "Multi-Agent System Logging"
-        MASLogger["📊 Multi-Agent Logger<br/>• Node/edge execution start/completion<br/>• Workflow execution<br/>• Agent interactions<br/>• State transitions<br/>• Critic decisions<br/>• Tool usage<br/>• Error handling"]
-    end
-    
-    subgraph "Log Storage & Organization"
-        RunDir["📁 Run Directory<br/>• Correlation ID based<br/>• Hierarchical structure"]
-        EntryLog["📄 Entry Point Log<br/>• INFO/ERROR/WARN/DEBUG levels<br/>• Configuration events<br/>• Batch events"]
-        MASLog["📄 Multi-Agent Log<br/>• Node/edge events<br/>• Workflow events<br/>• Agent events<br/>• Quality events"]
-    end
-    
-    Start --> CorrIDGen
-    CorrIDGen --> EntryLogger
-    EntryLogger --> MASLogger
-    
-    EntryLogger --> EntryLog
-    MASLogger --> MASLog
-    
-    EntryLog --> RunDir
-    MASLog --> RunDir
-    
-    %% Styling - Dark Theme Optimized
-    classDef start fill:#A8E6CF,stroke:#7FB069,stroke-width:2px,color:#000000
-    classDef correlation fill:#FFB347,stroke:#FF8C00,stroke-width:2px,color:#000000
-    classDef logging fill:#4ECDC4,stroke:#26A69A,stroke-width:2px,color:#000000
-    classDef storage fill:#00D4AA,stroke:#00B894,stroke-width:2px,color:#000000
-    
-    class Start start
-    class CorrIDGen correlation
-    class EntryLogger,MASLogger logging
-    class RunDir,EntryLog,MASLog storage
-```
+**Logging Benefits:**
+- **Debugging**: Simple text logs enable easy debugging and troubleshooting
+- **Monitoring**: Basic operational monitoring through log output
+- **Error Tracking**: Comprehensive error logging for failure analysis
+- **Standard Library**: No external dependencies, uses Python's built-in logging
 
 ### 7.4 Testing Strategies
 
@@ -2295,16 +2201,16 @@ Testing is a first-class concern, with architecture designed for testability at 
 **Related Sections**: Section 8 (referenced by architectural decisions section)
 
 **Section Summary:**
-This section covers the error handling, retry logic, quality assurance, testing strategies, and logging observability of the multi-agent system, describing how the system maintains reliability, quality, and robustness while providing comprehensive traceability and monitoring capabilities.
+This section covers the error handling, retry logic, quality assurance, testing strategies, and simple logging observability of the multi-agent system, describing how the system maintains reliability, quality, and robustness while providing basic traceability and monitoring capabilities.
 
 **Key Takeaways:**
 - Comprehensive error handling and critic rejection retry logic ensure system reliability with fail-fast error handling and graceful critic rejection failures
 - Critic agent and feedback loops provide integrated quality control at every workflow step
 - Testing strategies and infrastructure support maintainable, high-quality code and architecture
-- Correlation-based logging provides complete traceability and observability across the multi-agent workflow
-- Standard log levels (INFO, WARN, ERROR, DEBUG) provide comprehensive logging coverage
-- Node and edge execution logging enables detailed performance analysis and debugging
-- Entry point logging covers configuration, prompt loading, factory creation, and batch processing lifecycle
+- Simple Python standard library logging provides basic observability and debugging capabilities
+- Standard log levels (INFO, WARN, ERROR) provide basic logging coverage
+- Component execution logging enables basic performance analysis and debugging
+- Entry point uses standard library logging for comprehensive run coverage (entry point + multi-agent system)
 
 ---
 
@@ -2339,14 +2245,14 @@ The architecture is shaped by several foundational design decisions, each made t
 - Chose a hard-coded workflow for predictability, easier debugging, and clear state transitions.
 - Dynamic workflows were considered but deferred for future extensibility.
 
-**Structured Logging vs. Unstructured Logging:**
-- **Decision**: Structured logging using Structlog for comprehensive observability
-- **Rationale**: Enables correlation-based tracing, JSON formatting, and security-conscious logging
-- **Alternative Considered**: Standard Python logging with manual correlation ID management
-- **Rejection Reason**: Would require significant custom implementation for structured logging and correlation ID propagation
-- **Benefits**: Complete traceability, rapid debugging, performance insights, quality monitoring, security compliance, and operational excellence
-- **Analysis Capabilities**: Correlation-based queries, performance analysis, error analysis, and trend analysis enable comprehensive system insights
-- **Operational Benefits**: Debugging support, performance optimization, and quality improvement through critic decision analysis
+**Simple Logging vs. Complex Logging:**
+- **Decision**: Simple logging using Python standard library for basic observability
+- **Rationale**: Enables basic debugging, error tracking, and component monitoring without external dependencies
+- **Alternative Considered**: Structured logging frameworks with correlation IDs and complex features
+- **Rejection Reason**: Would add unnecessary complexity and external dependencies for a simple system
+- **Benefits**: Simple implementation, standard Python library, basic debugging capabilities, no external dependencies
+- **Analysis Capabilities**: Basic error tracking and component monitoring for troubleshooting
+- **Operational Benefits**: Debugging support, error tracking, and basic operational monitoring
 
 
 ### 8.2 Alternatives Considered
@@ -2369,8 +2275,8 @@ Several alternative architectural approaches were evaluated and rejected, with r
 - Explored plugin-based tool loading but prioritized explicit tool binding for safety and traceability.
 
 **Alternative Logging Approaches:**
-- Considered standard Python logging but chose Structlog for structured JSON output and correlation ID support.
-- Evaluated custom logging implementation but prioritized proven framework for maintainability and consistency.
+- Considered structured logging frameworks but chose Python standard library for simplicity and no external dependencies.
+- Evaluated complex logging implementations but prioritized simple, maintainable approach for basic debugging needs.
 
 
 ### 8.3 Trade-offs and Risks
@@ -2430,7 +2336,7 @@ The architecture is designed to support future evolution and adaptation as requi
 - **Retry Logic:** Mechanism for re-attempting failed agent actions when critic rejects their work, up to a configured limit.
 - **Fail-Fast Termination:** System behavior that terminates immediately with clear failure reasons when critical errors occur.
 - **Graceful Critic Rejection Failure:** System behavior where orchestrator sets finalizer as next step and instructs finalizer to return specific final answer with failing agent attribution in reasoning trace when critic rejection retry limits are exceeded.
-- **Structlog:** Structured logging framework providing JSON-formatted logs with correlation ID support and context-aware logging capabilities.
+- **Python Standard Library Logging:** Simple logging framework providing basic text-based logs with component identification and error tracking.
 
 **References:**
 - **Source Code:** See project repository for implementation details.
@@ -2480,6 +2386,6 @@ This document contains the following 11 diagrams as specified in the architectur
 8. **Diagram 6.1: Configuration & Factory Pattern Diagram** (Section 6.2) - Factory pattern implementation and configuration flow
 9. **Diagram 7.1: Technical Error Handling Diagram** (Section 7.1) - Error detection, logging, and fail-fast termination
 10. **Diagram 7.2: Quality Control & Retry Logic Architecture Diagram** (Section 7.2) - Critic agent decision-making and agent-specific retry configuration
-11. **Diagram 7.3: Logging Architecture Diagram** (Section 7.3) - Logging components, correlation flow, and storage organization
+
 
 **Note:** This index provides a quick reference to all diagrams in the document. Each diagram is located in its respective section and provides visual representation of the architectural concepts described in the text.

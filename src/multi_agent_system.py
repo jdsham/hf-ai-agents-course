@@ -25,6 +25,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 import asyncio
 from langchain_experimental.tools.python.tool import PythonREPLTool
+from langchain_community.document_loaders import TextLoader
 import pint
 
 ########################################################
@@ -317,6 +318,19 @@ def unstructured_pdf_tool(file_path: str) -> list[Document]:
     return loader.load()
 
 
+@tool
+def text_file_tool(file_path: str) -> str:
+    """
+    Load a text file and return the content.
+    """
+    loader = TextLoader(file_path)
+    documents = loader.load()
+    if documents:
+        return documents[0].page_content
+    else:
+        return ""
+
+
 async def get_browser_mcp_tools(mcp_url: str) -> list:
     """Get the browser MCP tools from the given URL.
 
@@ -351,6 +365,7 @@ async def get_research_tools() -> list[Tool]:
         unstructured_excel_tool,
         unstructured_powerpoint_tool,
         unstructured_pdf_tool,
+        text_file_tool,
         *mcp_tools,
     ]
 

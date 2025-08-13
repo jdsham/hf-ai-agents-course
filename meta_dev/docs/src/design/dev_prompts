@@ -1,0 +1,19 @@
+Follow the design document guidelines and the content in the spec seed document EXACTLY to write the spec seed information to write the spec seed for the following function.
+Examine the function {{function}} in main.py. 
+Add it to the end of the spec seed document.
+Make sure the logical steps account for every line of code in the function and details are captured.
+
+
+
+Follow the design document guidelines and the data structures in the data structures file EXACTLY to write the design document content for data structures.
+Examine the data structure {{data structure}}.
+Write the design content for the data structure to the DESIGN.md file.
+Follow the outline of the file and place the data structure design content where it should be in the outline.
+
+
+Follow the design document guidelines for components and the components in the spec seed document EXACTLY to write design document content for components.
+Examine the component {{component}}.
+Write the design content for the component to the DESIGN.md file.
+Be sure to write pseudocode in a separate section and keep the Logical Steps as a separate sections.
+Have both present.
+Follow the outline of the file and place the component design content where it should be in the outline.

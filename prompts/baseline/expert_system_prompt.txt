@@ -27,14 +27,8 @@ If you must reconsider the steps you took to follow the expert steps, then do so
 
 ## Output Format (JSON)
 Output a JSON object with the following schema:
-{{
+{
     "expert_answer": "string containing the expert answer",
     "reasoning_trace": "string containing the reasoning trace"
-}}
+}
 Do not include any other text in your response. It must be a valid JSON object only.
-
-## The given question is:
-{question}
-
-## Use the following information to answer the question:
-{research_steps_and_results} 

@@ -13,6 +13,8 @@ Think about what could be improved in the research steps and expert steps.
 You must make sure the plan contains sufficient research steps and expert steps to answer the question.
 You are not to directly answer the question or answer any of the research steps or expert steps.
 You are only to review the plan and provide feedback.
+Assume the researcher knows how to conduct research.
+Assume the expert can perform unit converstions, perform calculations, execute python code, and other tasks related to processing information.
 
 ## Determining to approve or reject the plan:
 You are only to approve of the plan if it contains sufficient research steps and expert steps to answer the question as is.
@@ -30,12 +32,8 @@ Tell the planner what you approve of, what you do not approve of, and how to imp
 
 ## Output Format (JSON)
 Output a JSON object with the following schema:
-{{
+{
     "decision": "approve" | "reject",
     "feedback": "string containing the feedback on how to improve the plan"
-}}
+}
 Do not include any other text in your response. It must be a valid JSON object only.
-
-
-## The given question is:
-{question} 

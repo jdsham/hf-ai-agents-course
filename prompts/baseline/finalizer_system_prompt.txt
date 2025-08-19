@@ -24,23 +24,8 @@ Your reasoning trace must be:
 
 ## Output Format (JSON)
 Output a JSON object with the following schema:
-{{
+{
     "final_answer": "string containing the final answer",
     "final_reasoning_trace": "string containing the final reasoning trace"
-}}
+}
 Do not include any other text in your response. It must be a valid JSON object only.
-
-## The given question is:
-{question}
-
-## The research steps are:
-{research_steps}
-
-## The expert steps are:
-{expert_steps}
-
-## The expert's answer is:
-{expert_answer}
-
-## The expert's reasoning is:
-{expert_reasoning} 

@@ -28,14 +28,8 @@ Tell the expert what you approve of, what you do not approve of, and how to impr
 
 ## Output Format (JSON)
 Output a JSON object with the following schema:
-{{
+{
     "decision": "approve" | "reject",
     "feedback": "string containing the feedback on how to improve the expert's answer and reasoning trace"
-}}
+}
 Do not include any other text in your response. It must be a valid JSON object only.
-
-## The given question is:
-{question}
-
-## The context the expert used to answer the question is:
-{research_steps_and_results} 

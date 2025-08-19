@@ -24,17 +24,11 @@ Do not directly answer the question or provide answers to researchs steps or exp
 ## Receiving feedback:
 You may receive feedback to adjust the research plan or expert steps.
 Make sure to consider the feedback and adjust the research plan or expert steps accordingly such that the plan is a good plan to answer the question.
-If additional research steps are needed, add them to the research plan.
-If you must reconsider the research plan, then do so.
-If additional expert steps are needed, add them to the expert steps.
-If you must reconsider the expert steps, then do so.
-If you update the research steps but not the expert steps, then make sure to return the updated research steps and the previous expert steps.
-If you update the expert steps but not the research steps, then make sure to return the previous research steps and the updated expert steps.
 
 ## Output Format (JSON)
 Output a JSON object with the following schema:
-{{
+{
     "research_steps": list[str]. Each step is an element in the list,
     "expert_steps": list[str]. Each step is an element in the list.
-}}
+}
 Do not include any other text in your response. It must be a valid JSON object only. 

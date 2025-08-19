@@ -58,25 +58,24 @@ DATA_STRUCTURE GraphState
     Fields:
     // Input related fields
     question: string // User's question to be answered
-    file_path: string = none // Optional field, contains the path to the file assosciated to the question if specified
+    file: string = none // Optional field, contains the path to the file associated with the question if specified
 
     // Agent-to-Agent Communication
-    agent_messages: list = []  // Inter-agent communication messages
+    agent_messages: list[AgentMessage] = []  // Inter-agent communication messages
 
     // Planner fields
-    research_steps: list = []  // Planned research steps from planner
-    expert_steps: list = []  // Planned expert steps from planner
+    research_steps: list[string] = []  // Planned research steps from planner
+    expert_steps: list[string] = []  // Planned expert steps from planner
 
     // Researcher fields
-    research_results: list = []  // Results from research execution
+    current_research_index: integer = -1  // Current research step identifier
+    researcher_states: dict[integer, ResearcherState] = {}  // Research step states
+    research_results: list[any] = []  // Results from research execution
 
     // Expert Fields
-    expert_answer: string = ""  // Expert's final answer
+    expert_state: ExpertState = none  // Expert subgraph state
+    expert_answer: any = ""  // Expert's final answer
     expert_reasoning: string = ""  // Expert's reasoning process
-
-    // Finalizer fields
-    final_answer: string // The Finalizer's final answer
-    final_reasoning_trace: string // The Finalizer's reasoning trace
 
     // Critic fields
     critic_planner_decision: string = ""  // Critic decision for planner agent
@@ -86,20 +85,22 @@ DATA_STRUCTURE GraphState
     critic_expert_decision: string = ""  // Critic decision for expert agent
     critic_expert_feedback: string = ""  // Critic feedback for expert agent
 
-    // Workflow
-    current_step: string [input, planner, critic_planner, researcher, critic_researcher, expert, critic_expert, finalizer] = "input"  // Current workflow step
-    next_step: string [planner, critic_planner, researcher, critic_researcher, expert, critic_expert, finalizer, END] = "planner"  // Next workflow step
-    retry_count: mapping[string, integer]  // Mapping of agent name (planner, researcher, or expert) to current retry counter for the specific agent
-    retry_limit: mapping[string, integer]  // Mapping of agent name (planner, researcher, or expert) to retry limit for the specific agent
-    current_research_step_id: integer = 0  // Current research step identifier
+    // Finalizer fields
+    final_answer: string = "" // The Finalizer's final answer
+    final_reasoning_trace: string = "" // The Finalizer's reasoning trace
+
+    // Workflow Control
+    current_step: Literal["input", "planner", "researcher", "expert", "critic_planner", "critic_researcher", "critic_expert", "finalizer", ""] = "input"  // Current workflow step
+    next_step: Literal["planner", "researcher", "expert", "critic_planner", "critic_researcher", "critic_expert", "finalizer", ""] = "planner"  // Next workflow step
     
-    // Subgraph state management
-    researcher_states: mapping[integer, ResearcherState] = {}  // Research step states
-    expert_state: ExpertState = none  // Expert subgraph state
-    
-    // Error handling
-    error: string = ""  // Error message if any
-    error_component: string = ""  // Component that failed
+    // Retry Management
+    planner_retry_count: integer = 0  // Current retry counter for planner agent
+    researcher_retry_count: integer = 0  // Current retry counter for researcher agent
+    expert_retry_count: integer = 0  // Current retry counter for expert agent
+    planner_retry_limit: integer  // Retry limit for planner agent
+    researcher_retry_limit: integer  // Retry limit for researcher agent
+    expert_retry_limit: integer  // Retry limit for expert agent
+    retry_failed: boolean = false  // Flag indicating if retry limit was exceeded
 END DATA_STRUCTURE
 ```
 
@@ -115,10 +116,10 @@ END DATA_STRUCTURE
 ```
 DATA_STRUCTURE ResearcherState
     Fields:
-    messages: list // LangChain BaseMessage objects for conversation history
+    messages: list[BaseMessage] // LangChain BaseMessage objects for conversation history
         // Implementation type: messages: Annotated[list[BaseMessage], operator.add]
-    step_id: integer // Research step identifier
-    results: any = none  // Results from research execution
+    step_index: integer // Research step identifier
+    result: any = none  // Results from research execution
 END DATA_STRUCTURE
 ```
 
@@ -134,12 +135,12 @@ END DATA_STRUCTURE
 ```
 DATA_STRUCTURE ExpertState
     Fields:
-    messages: list // LangChain BaseMessage objects for conversation history
+    messages: list[BaseMessage] // LangChain BaseMessage objects for conversation history
         // Implementation type: messages: Annotated[list[BaseMessage], operator.add]
     question: string // The question from the main graph's GraphState
-    research_steps: list // The researcher steps
-    research_results: list // The research results corresponding to the research step
-    expert_answer: string = ""  // Expert's calculated answer
+    research_steps: list[string] // The researcher steps
+    research_results: list[any] // The research results corresponding to the research step
+    expert_answer: any = ""  // Expert's calculated answer
     expert_reasoning: string = ""  // Expert's reasoning process
 END DATA_STRUCTURE
 ```
@@ -157,11 +158,11 @@ END DATA_STRUCTURE
 DATA_STRUCTURE AgentMessage
     Fields:
     timestamp: string // Message timestamp
-    sender: string  // Source agent identifier
-    receiver: string // Target agent identifier
-    type: string [instruction, feedback, response] // Message type
-    content: string // Message content and data
-    step_id: integer = null  // Optional research step identifier
+    sender: string  // Source agent identifier ("critic", "expert", "orchestrator")
+    receiver: string // Target agent identifier ("expert", "orchestrator", "all")
+    type: string [instruction, feedback, question] // Message type
+    content: string // Natural language message
+    step_id: Optional[integer] = null  // Optional research step identifier
 END DATA_STRUCTURE
 ```
 
@@ -210,13 +211,13 @@ It is supplied in part to the graph factory function.
 ```
 DATA_STRUCTURE AgentConfig
     Fields:
-    name: string  // API keys for external services
+    name: string  // Agent name identifier
     provider: string  // The LLM Provider, like openai or anthropic
     model: string  // LLM model
     temperature: float  // LLM temperature setting
-    output_schemas: dict  // Agent output schema
+    output_schema: dict  // Agent output schema
     system_prompt: string | dict  // Agent system prompt or prompts (multiple prompts for critic only)
-    retry_limits: object = {}  // Agent retry limits
+    retry_limit: integer = null  // Agent retry limit (null for critic and finalizer)
 END DATA_STRUCTURE
 ```
 
@@ -324,6 +325,115 @@ END DATA_STRUCTURE
 ## 3. Component Specifications
 
 ### Infrastructure and Utility Components
+
+#### MCP Tool Synchronous Wrapper Factory
+
+**Component name**: create_sync_wrapper_for_mcp_tool
+
+**Component type**: function
+
+**Component purpose and responsibilities**:
+- **Purpose**: Create a synchronous wrapper for an asynchronous MCP tool
+- **Responsibilities**: 
+  - Wraps asynchronous MCP tools to make them synchronous
+  - Handles event loop management for async-to-sync conversion
+  - Preserves tool metadata and properties
+  - Enables integration of async MCP tools in synchronous contexts
+
+**Component interface**:
+- **Inputs**:
+  - async_tool: Any // The asynchronous MCP tool to wrap
+- **Outputs**:
+  - Callable // The synchronous wrapper function
+- **Validations**:
+  - Handled by Python function creation and metadata copying
+
+**Direct Dependencies with Other Components**: None
+
+**Internal Logic**:
+1. Define inner sync_wrapper function that takes arbitrary arguments
+2. Import asyncio module for event loop management
+3. Try to get the currently running event loop
+4. If event loop is running, use ThreadPoolExecutor to run async tool in new thread
+5. If no event loop is running, create new event loop and run async tool
+6. Copy tool metadata (name, doc, args_schema, return_direct) to wrapper
+7. Return the synchronous wrapper function
+
+**Pseudocode**:
+```
+FUNCTION create_sync_wrapper_for_mcp_tool(async_tool)
+    /*
+    Purpose: Create a synchronous wrapper for an asynchronous MCP tool
+    
+    BEHAVIOR:
+    - Accepts: async_tool (Any) - The asynchronous MCP tool to wrap
+    - Produces: Callable - The synchronous wrapper function
+    - Handles: Async-to-sync conversion with proper event loop management
+    
+    DEPENDENCIES:
+    - Python asyncio: Library for asynchronous programming
+    - Python concurrent.futures: Library for thread pool execution
+    
+    IMPLEMENTATION NOTES:
+    - Should handle both running and non-running event loop scenarios
+    - Must preserve all tool metadata and properties
+    - Should use thread pool executor for running event loop case
+    - Should create new event loop for non-running case
+    */
+    
+    // Define inner sync_wrapper function that takes arbitrary arguments
+    FUNCTION sync_wrapper(*args, **kwargs)
+        // Import asyncio module for event loop management
+        IMPORT asyncio
+        TRY
+            // Check if we're already in an event loop
+            loop = asyncio.get_running_loop()
+            // If we are, we need to run in a new thread to avoid blocking
+            IMPORT concurrent.futures
+            WITH concurrent.futures.ThreadPoolExecutor() AS executor DO
+                future = executor.submit(asyncio.run, async_tool.arun(*args, **kwargs))
+                RETURN future.result()
+            END WITH
+        CATCH RuntimeError
+            // No event loop running, we can create one
+            RETURN asyncio.run(async_tool.arun(*args, **kwargs))
+        END TRY
+    END FUNCTION
+    
+    // Copy the tool's metadata to the wrapper
+    sync_wrapper.__name__ = async_tool.name
+    sync_wrapper.__doc__ = async_tool.description
+    sync_wrapper.args_schema = async_tool.args_schema
+    sync_wrapper.return_direct = async_tool.return_direct
+    
+    // Return the synchronous wrapper function
+    RETURN sync_wrapper
+    
+END FUNCTION
+```
+
+**Workflow Control**: None
+
+**State Management**: Does not access any graph states.
+
+**Communication Patterns**: None. This component does not communicate, rather it creates wrapper functions
+
+**External Dependencies**:
+- **Python asyncio**: Library for asynchronous programming
+- **Python concurrent.futures**: Library for thread pool execution
+
+**Global variables**: None
+
+**Closed-over variables**: None
+
+**Decorators**: None
+
+**Logging**: None. This component does not perform logging operations.
+
+**Error Handling**:
+- Handles RuntimeError when no event loop is running
+- All other errors and exceptions will be uncaught and bubble up the call stack
+- This enables a global error handling design implemented in the entry point.
 
 #### JSON Response Enforcement
 
@@ -446,12 +556,12 @@ END FUNCTION
 **Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
-1. Check if every key in output_schema_keys exists in the response dictionary. Could use Python's all() function in implementation.
-2. Return True if all keys are present, False if any key is missing
+1. Use Python's all() function to check if every key in output_schema_keys exists in the response dictionary
+2. Return the result directly (True if all keys are present, False if any key is missing)
 
 **Pseudocode**:
 ```
-FUNCTION validate_output_matches_json_schema(response: Any, output_schema_keys: list[string]) -> bool
+FUNCTION validate_output_matches_json_schema(response: Any, output_schema_keys: list[str]) -> bool
     /*
     Purpose: Check if the LLM response has all the expected fields
     
@@ -467,11 +577,8 @@ FUNCTION validate_output_matches_json_schema(response: Any, output_schema_keys: 
     - Must handle missing keys gracefully
     */
     
-    // Check if every key in output_schema_keys exists in the response dictionary
-    validation_result ← all(key in response for key in output_schema_keys)
-    
-    // Return validation result
-    RETURN validation_result
+    // Use Python's all() function to check if every key in output_schema_keys exists in the response dictionary
+    RETURN all(key in response for key in output_schema_keys)
     
 END FUNCTION
 ```
@@ -525,7 +632,7 @@ END FUNCTION
 - validate_output_matches_json_schema function
 
 **Internal Logic**:
-1. Call enforce_json_response function to ensure response is a dictionary
+1. Call enforce_json_response function to ensure response is a dictionary and assign to response variable
 2. Check if the response matches the expected schema using validate_output_matches_json_schema function
 3. If schema validation fails, raise KeyError with component context and field details
 4. Return the validated response dictionary
@@ -553,23 +660,17 @@ FUNCTION validate_llm_response(response: Any, expected_fields: List[string], com
     - Should include component context in error messages
     */
     
-    // Enforce JSON response format
-    validated_response ← enforce_json_response(response, component)
+    // Enforce JSON response format and assign to response variable
+    response = enforce_json_response(response, component)
     
-    // Validate response schema
-    schema_valid ← validate_output_matches_json_schema(validated_response, expected_fields)
-    
-    // Check if schema validation failed
-    IF NOT schema_valid THEN
-        // Create error message with component context and field details
-        error_msg ← f"Component {component} response missing expected fields. Expected: {expected_fields}, Actual: {validated_response}"
-        
-        // Raise KeyError with context
-        RAISE KeyError(error_msg)
+    // Check if the response matches the expected schema using validate_output_matches_json_schema function
+    IF NOT validate_output_matches_json_schema(response, expected_fields) THEN
+        // Raise KeyError with component context and field details
+        RAISE KeyError(f"{component}: Response does not contain all expected fields. Expected fields: {expected_fields}, Response: {response}")
     END IF
     
     // Return the validated response dictionary
-    RETURN validated_response
+    RETURN response
     
 END FUNCTION
 ```
@@ -647,10 +748,10 @@ FUNCTION compose_agent_message(sender: string, receiver: string, message_type: s
     */
     
     // Get the current timestamp
-    current_timestamp ← get_current_timestamp()
+    current_timestamp = get_current_timestamp()
     
     // Compose AgentMessage with all inputs and timestamp
-    agent_message: AgentMessage ← {
+    agent_message: AgentMessage = {
         "timestamp": current_timestamp,
         "sender": sender,
         "receiver": receiver,
@@ -904,11 +1005,11 @@ END FUNCTION
 
 **Internal Logic**:
 1. Initialize an empty list called converted_messages
-2. Iterate through each message in the input messages list
-3. For each message, check if the sender is "orchestrator"
-4. If sender is "orchestrator", create a HumanMessage with the message content
-5. If sender is not "orchestrator", create an AIMessage with the message content
-6. Append the created message to the converted_messages list
+2. Iterate through each message in the input messages list using variable name 'm'
+3. For each message, check if the sender is "orchestrator" using dictionary access
+4. If sender is "orchestrator", create a HumanMessage with the message content using dictionary access
+5. If sender is not "orchestrator", create an AIMessage with the message content using dictionary access
+6. Append the created message to the converted_messages list using append() method
 7. Return the converted_messages list
 
 **Pseudocode**:
@@ -934,21 +1035,21 @@ FUNCTION convert_agent_messages_to_langchain(messages: List[AgentMessage]) -> Li
     */
     
     // Initialize empty list for converted messages
-    converted_messages ← []
+    converted_messages = []
     
-    // Iterate through each message in the input messages list
-    FOR EACH message IN messages DO
-        // Check if the sender is "orchestrator"
-        IF message.sender = "orchestrator" THEN
-            // Create HumanMessage with the message content
-            langchain_message ← HumanMessage(content=message.content)
+    // Iterate through each message in the input messages list using variable name 'm'
+    FOR m IN messages DO
+        // Check if the sender is "orchestrator" using dictionary access
+        IF m["sender"] = "orchestrator" THEN
+            // Create HumanMessage with the message content using dictionary access
+            message = HumanMessage(content=m["content"])
         ELSE
-            // Create AIMessage with the message content
-            langchain_message ← AIMessage(content=message.content)
+            // Create AIMessage with the message content using dictionary access
+            message = AIMessage(content=m["content"])
         END IF
         
-        // Append the created message to the converted_messages list
-        converted_messages ← converted_messages + [langchain_message]
+        // Append the created message to the converted_messages list using append() method
+        converted_messages.append(message)
     END FOR
     
     // Return the converted_messages list
@@ -1009,13 +1110,13 @@ END FUNCTION
 
 **Internal Logic**:
 1. Log the beginning of processing with the URL
-2. Create YoutubeLoader instance with the provided URL and add_video_info=True
+2. Create YoutubeLoader instance using from_youtube_url with the provided URL and add_video_info=True
 3. Load documents using the loader
 4. Check if documents list is empty
-5. If no documents found, log info and return "No transcript found" message
+5. If no documents found, log info and return "No transcript found for this YouTube video." message
 6. Extract transcript content from the first document's page_content
 7. Extract metadata from the first document
-8. Format video information string with title, author, and duration from metadata
+8. Format video information string with title, author, and duration from metadata using .get() with defaults
 9. Log successful completion
 10. Return concatenated video info and transcript content
 
@@ -1042,35 +1143,37 @@ FUNCTION youtube_transcript_tool(url: string) -> string
     */
     
     // Log the beginning of processing with the URL
-    LOG_INFO(f"Starting YouTube transcript extraction for URL: {url}")
+    LOG_INFO(f"YouTube transcript tool processing URL: {url}")
     
-    // Create YoutubeLoader instance with the provided URL and add_video_info=True
-    loader ← YoutubeLoader(url=url, add_video_info=True)
+    // Create YoutubeLoader instance using from_youtube_url with the provided URL and add_video_info=True
+    loader = YoutubeLoader.from_youtube_url(url, add_video_info=True)
     
     // Load documents using the loader
-    documents ← loader.load()
+    documents = loader.load()
     
     // Check if documents list is empty
-    IF documents IS EMPTY THEN
-        // Log info and return "No transcript found" message
-        LOG_INFO("No transcript found for the provided YouTube URL")
-        RETURN "No transcript found"
+    IF NOT documents THEN
+        // Log info and return "No transcript found for this YouTube video." message
+        LOG_INFO("No transcript found for YouTube video")
+        RETURN "No transcript found for this YouTube video."
     END IF
     
     // Extract transcript content from the first document's page_content
-    transcript_content ← documents[0].page_content
+    transcript = documents[0].page_content
     
     // Extract metadata from the first document
-    metadata ← documents[0].metadata
+    metadata = documents[0].metadata
     
-    // Format video information string with title, author, and duration from metadata
-    video_info ← f"Title: {metadata['title']}\nAuthor: {metadata['author']}\nDuration: {metadata['duration']}\n\n"
+    // Format video information string with title, author, and duration from metadata using .get() with defaults
+    video_info = f"Video Title: {metadata.get('title', 'Unknown')}\n"
+    video_info += f"Channel: {metadata.get('author', 'Unknown')}\n"
+    video_info += f"Duration: {metadata.get('length', 'Unknown')} seconds\n\n"
     
     // Log successful completion
-    LOG_INFO("YouTube transcript extraction completed successfully")
+    LOG_INFO(f"YouTube transcript tool completed successfully")
     
     // Return concatenated video info and transcript content
-    RETURN video_info + transcript_content
+    RETURN video_info + transcript
     
 END FUNCTION
 ```
@@ -1094,9 +1197,9 @@ END FUNCTION
 - **@tool**: LangChain tool decorator - marks function as a LangGraph tool
 
 **Logging**:
-- Append logging (INFO) at the beginning of processing with URL
-- Append logging (INFO) at the end of successful processing
-- Append logging (INFO) if no transcript is found
+- Append logging (INFO) at the beginning of processing with URL: "YouTube transcript tool processing URL: {url}"
+- Append logging (INFO) if no transcript is found: "No transcript found for YouTube video"
+- Append logging (INFO) at the end of successful processing: "YouTube transcript tool completed successfully"
 
 **Error Handling**:
 - None. All errors and exceptions will be uncaught and bubble up the call stack.
@@ -1128,9 +1231,10 @@ END FUNCTION
 **Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
-1. Create UnstructuredExcelLoader instance with the provided file path
-2. Load the Excel file content using the loader
-3. Return the loaded documents as a list of Document objects
+1. Log the beginning of Excel file loading with the file path
+2. Create UnstructuredExcelLoader instance with the provided file path
+3. Load the Excel file content using the loader
+4. Return the loaded documents as a list of Document objects
 
 **Pseudocode**:
 ```
@@ -1154,17 +1258,14 @@ FUNCTION unstructured_excel_tool(file_path: string) -> list[Document]
     - Should provide logging for debugging file operations
     */
     
-    // Log the beginning of processing with file path
-    LOG_INFO(f"Starting Excel file processing for: {file_path}")
+    // Log the beginning of Excel file loading with the file path
+    LOG_INFO(f"Loading Excel file: {file_path}")
     
     // Create UnstructuredExcelLoader instance with the provided file path
-    loader ← UnstructuredExcelLoader(file_path=file_path)
+    loader = UnstructuredExcelLoader(file_path)
     
     // Load the Excel file content using the loader
-    documents ← loader.load()
-    
-    // Log successful completion
-    LOG_INFO("Excel file processing completed successfully")
+    documents = loader.load()
     
     // Return the loaded documents as a list of Document objects
     RETURN documents
@@ -1188,12 +1289,10 @@ END FUNCTION
 **Closed-over variables**: None
 
 **Decorators**:
-- **@tool**: LangChain tool decorator - marks function as a LangGraph tool
+- None
 
 **Logging**:
-- Append logging (INFO) at the beginning of processing with file path
-- Append logging (INFO) at the end of successful processing
-- Append logging (ERROR) if file loading fails
+- Append logging (INFO) at the beginning of processing with file path: "Loading Excel file: {file_path}"
 
 **Error Handling**:
 - None. All errors and exceptions will be uncaught and bubble up the call stack.
@@ -1225,9 +1324,10 @@ END FUNCTION
 **Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
-1. Create UnstructuredPowerPointLoader instance with the provided file path
-2. Load the PowerPoint file content using the loader
-3. Return the loaded documents as a list of Document objects
+1. Log the beginning of PowerPoint file loading with the file path
+2. Create UnstructuredPowerPointLoader instance with the provided file path
+3. Load the PowerPoint file content using the loader
+4. Return the loaded documents as a list of Document objects
 
 **Pseudocode**:
 ```
@@ -1251,17 +1351,14 @@ FUNCTION unstructured_powerpoint_tool(file_path: string) -> list[Document]
     - Should provide logging for debugging file operations
     */
     
-    // Log the beginning of processing with file path
-    LOG_INFO(f"Starting PowerPoint file processing for: {file_path}")
+    // Log the beginning of PowerPoint file loading with the file path
+    LOG_INFO(f"Loading PowerPoint file: {file_path}")
     
     // Create UnstructuredPowerPointLoader instance with the provided file path
-    loader ← UnstructuredPowerPointLoader(file_path=file_path)
+    loader = UnstructuredPowerPointLoader(file_path)
     
     // Load the PowerPoint file content using the loader
-    documents ← loader.load()
-    
-    // Log successful completion
-    LOG_INFO("PowerPoint file processing completed successfully")
+    documents = loader.load()
     
     // Return the loaded documents as a list of Document objects
     RETURN documents
@@ -1288,9 +1385,7 @@ END FUNCTION
 - **@tool**: LangChain tool decorator - marks function as a LangGraph tool
 
 **Logging**:
-- Append logging (INFO) at the beginning of processing with file path
-- Append logging (INFO) at the end of successful processing
-- Append logging (ERROR) if file loading fails
+- Append logging (INFO) at the beginning of processing with file path: "Loading PowerPoint file: {file_path}"
 
 **Error Handling**:
 - None. All errors and exceptions will be uncaught and bubble up the call stack.
@@ -1322,9 +1417,10 @@ END FUNCTION
 **Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
-1. Create UnstructuredPDFLoader instance with the provided file path
-2. Load the PDF file content using the loader
-3. Return the loaded documents as a list of Document objects
+1. Log the beginning of PDF file loading with the file path
+2. Create UnstructuredPDFLoader instance with the provided file path
+3. Load the PDF file content using the loader
+4. Return the loaded documents as a list of Document objects
 
 **Pseudocode**:
 ```
@@ -1348,17 +1444,14 @@ FUNCTION unstructured_pdf_tool(file_path: string) -> list[Document]
     - Should provide logging for debugging file operations
     */
     
-    // Log the beginning of processing with file path
-    LOG_INFO(f"Starting PDF file processing for: {file_path}")
+    // Log the beginning of PDF file loading with the file path
+    LOG_INFO(f"Loading PDF file: {file_path}")
     
     // Create UnstructuredPDFLoader instance with the provided file path
-    loader ← UnstructuredPDFLoader(file_path=file_path)
+    loader = UnstructuredPDFLoader(file_path)
     
     // Load the PDF file content using the loader
-    documents ← loader.load()
-    
-    // Log successful completion
-    LOG_INFO("PDF file processing completed successfully")
+    documents = loader.load()
     
     // Return the loaded documents as a list of Document objects
     RETURN documents
@@ -1385,9 +1478,7 @@ END FUNCTION
 - **@tool**: LangChain tool decorator - marks function as a LangGraph tool
 
 **Logging**:
-- Append logging (INFO) at the beginning of processing with file path
-- Append logging (INFO) at the end of successful processing
-- Append logging (ERROR) if file loading fails
+- Append logging (INFO) at the beginning of processing with file path: "Loading PDF file: {file_path}"
 
 **Error Handling**:
 - None. All errors and exceptions will be uncaught and bubble up the call stack.
@@ -1419,13 +1510,14 @@ END FUNCTION
 **Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
-1. Create a TextLoader instance with the provided file_path parameter
-2. Call the load() method on the TextLoader instance to load the text file
-3. The load() method returns a list of Document objects containing the file content
-4. Check if the documents list is not empty
-5. If documents exist, extract the page_content from the first (and typically only) Document in the list
-6. If no documents are found, return an empty string
-7. Return the extracted text content as a string
+1. Log the beginning of text file loading with the file path
+2. Create a TextLoader instance with the provided file_path parameter
+3. Call the load() method on the TextLoader instance to load the text file
+4. The load() method returns a list of Document objects containing the file content
+5. Check if the documents list is not empty
+6. If documents exist, extract the page_content from the first (and typically only) Document in the list
+7. If no documents are found, return an empty string
+8. Return the extracted text content as a string
 
 **Pseudocode**:
 ```
@@ -1449,23 +1541,25 @@ FUNCTION text_file_tool(file_path: string) -> string
     - Should return empty string if no documents found
     */
     
+    // Log the beginning of text file loading with the file path
+    LOG_INFO(f"Loading text file: {file_path}")
+    
     // Create a TextLoader instance with the provided file_path parameter
-    loader ← TextLoader(file_path=file_path)
+    loader = TextLoader(file_path)
     
     // Call the load() method on the TextLoader instance to load the text file
-    documents ← loader.load()
+    documents = loader.load()
     
     // Check if the documents list is not empty
-    IF documents IS EMPTY THEN
+    IF documents THEN
+        // If documents exist, extract the page_content from the first Document in the list
+        text_content = documents[0].page_content
+        // Return the extracted text content as a string
+        RETURN text_content
+    ELSE
         // If no documents are found, return an empty string
         RETURN ""
     END IF
-    
-    // If documents exist, extract the page_content from the first Document in the list
-    text_content ← documents[0].page_content
-    
-    // Return the extracted text content as a string
-    RETURN text_content
     
 END FUNCTION
 ```
@@ -1487,7 +1581,194 @@ END FUNCTION
 **Decorators**:
 - **@tool**: LangChain tool decorator - marks function as a LangGraph tool
 
-**Logging**: None. This component does not perform logging operations.
+**Logging**:
+- Append logging (INFO) at the beginning of processing with file path: "Loading text file: {file_path}"
+
+**Error Handling**:
+- None. All errors and exceptions will be uncaught and bubble up the call stack.
+- This enables a global error handling design implemented in the entry point.
+
+#### Wikipedia Search Tool
+
+**Component name**: wikipedia_tool
+
+**Component type**: function
+
+**Component purpose and responsibilities**:
+- **Purpose**: Search for information on Wikipedia
+- **Responsibilities**: 
+  - Creates WikipediaQueryRun instance with WikipediaAPIWrapper
+  - Performs Wikipedia searches using provided query
+  - Returns search results as formatted strings
+  - Provides Wikipedia search capabilities for research operations
+
+**Component interface**:
+- **Inputs**:
+  - query: string // The search query to perform
+- **Outputs**:
+  - string // The search results as a string
+- **Validations**:
+  - Handled by WikipediaQueryRun validation
+  - Query format validation handled by Wikipedia API
+
+**Direct Dependencies with Other Components**: None
+
+**Internal Logic**:
+1. Log the beginning of Wikipedia search with the query
+2. Create WikipediaQueryRun instance with WikipediaAPIWrapper
+3. Invoke the WikipediaQueryRun with the provided query
+4. Return the search results
+
+**Pseudocode**:
+```
+FUNCTION wikipedia_tool(query: string) -> string
+    /*
+    Purpose: Search for information on Wikipedia
+    
+    BEHAVIOR:
+    - Accepts: query (string) - The search query to perform
+    - Produces: string - The search results as a string
+    - Handles: Wikipedia search using Wikipedia API
+    
+    DEPENDENCIES:
+    - LangChain WikipediaQueryRun: Library for Wikipedia search operations
+    - LangChain WikipediaAPIWrapper: Library for Wikipedia API wrapper
+    - LangChain @tool Decorator: Library to mark function as a LangGraph tool
+    
+    IMPLEMENTATION NOTES:
+    - Should create WikipediaQueryRun instance with WikipediaAPIWrapper for each search
+    - Must handle Wikipedia search queries effectively
+    - Should return formatted search results
+    - Should provide Wikipedia search capabilities for research operations
+    */
+    
+    // Log the beginning of Wikipedia search with the query
+    LOG_INFO(f"Wikipedia tool searching for: {query}")
+    
+    // Create WikipediaQueryRun instance with WikipediaAPIWrapper
+    wikipedia_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper(wiki_client=None))
+    
+    // Invoke the WikipediaQueryRun with the provided query
+    result = wikipedia_tool.invoke(query)
+    
+    // Return the search results
+    RETURN result
+    
+END FUNCTION
+```
+
+**Workflow Control**: None
+
+**State Management**: Does not access any graph states.
+
+**Communication Patterns**: None. This component does not communicate, rather it performs Wikipedia search operations
+
+**External Dependencies**:
+- **LangChain WikipediaQueryRun**: Library for Wikipedia search operations
+- **LangChain WikipediaAPIWrapper**: Library for Wikipedia API wrapper
+- **LangChain @tool Decorator**: Library to mark function as a LangGraph tool
+
+**Global variables**: None
+
+**Closed-over variables**: None
+
+**Decorators**:
+- **@tool**: LangChain tool decorator - marks function as a LangGraph tool
+
+**Logging**:
+- Append logging (INFO) at the beginning of processing with query: "Wikipedia tool searching for: {query}"
+
+**Error Handling**:
+- None. All errors and exceptions will be uncaught and bubble up the call stack.
+- This enables a global error handling design implemented in the entry point.
+
+#### Tavily Search Tool
+
+**Component name**: tavily_tool
+
+**Component type**: function
+
+**Component purpose and responsibilities**:
+- **Purpose**: Search for information on the web using Tavily search
+- **Responsibilities**: 
+  - Creates TavilySearch instance for web search
+  - Performs web searches using provided query
+  - Returns search results as formatted strings
+  - Provides web search capabilities for research operations
+
+**Component interface**:
+- **Inputs**:
+  - query: string // The search query to perform
+- **Outputs**:
+  - string // The search results as a string
+- **Validations**:
+  - Handled by TavilySearch validation
+  - Query format validation handled by Tavily API
+
+**Direct Dependencies with Other Components**: None
+
+**Internal Logic**:
+1. Log the beginning of Tavily search with the query
+2. Create TavilySearch instance
+3. Invoke the TavilySearch with the provided query
+4. Return the search results
+
+**Pseudocode**:
+```
+FUNCTION tavily_tool(query: string) -> string
+    /*
+    Purpose: Search for information on the web using Tavily search
+    
+    BEHAVIOR:
+    - Accepts: query (string) - The search query to perform
+    - Produces: string - The search results as a string
+    - Handles: Web search using Tavily API
+    
+    DEPENDENCIES:
+    - LangChain TavilySearch: Library for web search operations
+    - LangChain @tool Decorator: Library to mark function as a LangGraph tool
+    
+    IMPLEMENTATION NOTES:
+    - Should create TavilySearch instance for each search
+    - Must handle web search queries effectively
+    - Should return formatted search results
+    - Should provide web search capabilities for research operations
+    */
+    
+    // Log the beginning of Tavily search with the query
+    LOG_INFO(f"Tavily tool searching for: {query}")
+    
+    // Create TavilySearch instance
+    tavily_tool = TavilySearch()
+    
+    // Invoke the TavilySearch with the provided query
+    result = tavily_tool.invoke(query)
+    
+    // Return the search results
+    RETURN result
+    
+END FUNCTION
+```
+
+**Workflow Control**: None
+
+**State Management**: Does not access any graph states.
+
+**Communication Patterns**: None. This component does not communicate, rather it performs web search operations
+
+**External Dependencies**:
+- **LangChain TavilySearch**: Library for web search operations
+- **LangChain @tool Decorator**: Library to mark function as a LangGraph tool
+
+**Global variables**: None
+
+**Closed-over variables**: None
+
+**Decorators**:
+- **@tool**: LangChain tool decorator - marks function as a LangGraph tool
+
+**Logging**:
+- Append logging (INFO) at the beginning of processing with query: "Tavily tool searching for: {query}"
 
 **Error Handling**:
 - None. All errors and exceptions will be uncaught and bubble up the call stack.
@@ -1505,25 +1786,29 @@ END FUNCTION
   - Establishes connection to MCP server using streamablehttp_client
   - Initializes MCP session with the server
   - Loads MCP tools from the session
+  - Creates synchronous wrappers for async MCP tools
   - Returns list of available MCP tools for browser operations
 
 **Component interface**:
 - **Inputs**:
   - mcp_url: string // The URL of the browser MCP
 - **Outputs**:
-  - list // The list of MCP tools
+  - list // The list of MCP tools with sync wrappers
 - **Validations**:
   - Handled by MCP client session validation
   - URL format validation handled by streamablehttp_client
 
-**Direct Dependencies with Other Components**: None
+**Direct Dependencies with Other Components**:
+- create_sync_wrapper_for_mcp_tool function
 
 **Internal Logic**:
-1. Create async context manager for streamablehttp_client with the MCP URL, unpacking read, write, and unused streams
+1. Create async context manager for streamablehttp_client with the MCP URL
 2. Create async context manager for ClientSession with read and write streams
 3. Initialize the MCP session using await session.initialize()
 4. Load MCP tools from the session using await load_mcp_tools(session)
-5. Return the list of MCP tools
+5. Create sync wrappers for each MCP tool using create_sync_wrapper_for_mcp_tool
+6. Convert sync wrappers back to LangChain Tool objects
+7. Return the list of wrapped MCP tools
 
 **Pseudocode**:
 ```
@@ -1533,34 +1818,46 @@ ASYNC FUNCTION get_browser_mcp_tools(mcp_url: string) -> list
     
     BEHAVIOR:
     - Accepts: mcp_url (string) - The URL of the browser MCP
-    - Produces: list - The list of MCP tools
-    - Handles: MCP server connection and tool loading
+    - Produces: list - The list of MCP tools with sync wrappers
+    - Handles: MCP server connection and tool loading with sync wrappers
     
     DEPENDENCIES:
     - MCP Server: Model Context Protocol server for tool access
     - streamablehttp_client: HTTP client for MCP server communication
     - ClientSession: MCP client session management
     - load_mcp_tools: Function to load tools from MCP session from LangChain community
+    - create_sync_wrapper_for_mcp_tool: Function to create sync wrappers
     
     IMPLEMENTATION NOTES:
     - Should handle async context managers for proper resource management
     - Must establish and maintain MCP session connection
     - Should load all available MCP tools from the session
+    - Should create sync wrappers for all async tools
     - Should handle connection errors gracefully
     */
     
     // Create async context manager for streamablehttp_client with the MCP URL
-    WITH streamablehttp_client(mcp_url) AS (read_stream, write_stream, unused_stream) DO
+    WITH streamablehttp_client(mcp_url) AS (read, write, _) DO
         // Create async context manager for ClientSession with read and write streams
-        WITH ClientSession(read_stream, write_stream) AS session DO
+        WITH ClientSession(read, write) AS session DO
             // Initialize the MCP session
             AWAIT session.initialize()
             
             // Load MCP tools from the session
-            mcp_tools ← AWAIT load_mcp_tools(session)
+            mcp_tools = await load_mcp_tools(session)
             
-            // Return the list of MCP tools
-            RETURN mcp_tools
+            // Create sync wrappers for each MCP tool
+            sync_mcp_tools = []
+            FOR mcp_tool IN mcp_tools DO
+                sync_tool = create_sync_wrapper_for_mcp_tool(mcp_tool)
+                // Convert the sync wrapper back to a LangChain Tool
+                IMPORT tool FROM langchain_core.tools
+                wrapped_tool = tool(sync_tool)
+                sync_mcp_tools.append(wrapped_tool)
+            END FOR
+            
+            // Return the list of wrapped MCP tools
+            RETURN sync_mcp_tools
         END WITH
     END WITH
     
@@ -1612,7 +1909,7 @@ END FUNCTION
 **Component interface**:
 - **Inputs**: None
 - **Outputs**:
-  - list // The list of research tools
+  - list[Tool] // The list of research tools
 - **Validations**:
   - Handled by individual tool creation validation
   - MCP tools validation handled by get_browser_mcp_tools function
@@ -1620,17 +1917,17 @@ END FUNCTION
 **Direct Dependencies with Other Components**:
 - get_browser_mcp_tools function
 - youtube_transcript_tool function
+- tavily_tool function
+- wikipedia_tool function
 - unstructured_excel_tool function
 - unstructured_powerpoint_tool function
 - unstructured_pdf_tool function
 - text_file_tool function
 
 **Internal Logic**:
-1. Create Wikipedia tool with WikipediaAPIWrapper(wiki_client=None)
-2. Create Tavily search tool
-3. Define browser MCP URL as "http://0.0.0.0:3000/mcp"
-4. Retrieve MCP tools using await get_browser_mcp_tools(browser_mcp_url)
-5. Return list containing:
+1. Define browser MCP URL as "http://0.0.0.0:3000/mcp"
+2. Retrieve MCP tools using await get_browser_mcp_tools(browser_mcp_url)
+3. Return list containing:
    - youtube_transcript_tool
    - tavily_tool
    - wikipedia_tool
@@ -1642,42 +1939,33 @@ END FUNCTION
 
 **Pseudocode**:
 ```
-ASYNC FUNCTION get_research_tools() -> list
+ASYNC FUNCTION get_research_tools() -> list[Tool]
     /*
     Purpose: Get the research tools
     
     BEHAVIOR:
     - Accepts: None
-    - Produces: list - The list of research tools
+    - Produces: list[Tool] - The list of research tools
     - Handles: Tool creation and compilation for research operations
     
     DEPENDENCIES:
-    - WikipediaQueryRun: LangChain Wikipedia tool for knowledge base access
-    - WikipediaAPIWrapper: API wrapper for Wikipedia queries
-    - TavilySearch: LangChain Tavily search tool for web search
     - get_browser_mcp_tools: Function to retrieve MCP tools
+    - Built-in research tools: Various file and web search tools
     
     IMPLEMENTATION NOTES:
-    - Should create all necessary research tools
-    - Must combine built-in tools with external MCP tools
+    - Should combine built-in tools with external MCP tools
     - Should handle async MCP tool retrieval
     - Should return comprehensive tool list for research operations
     */
     
-    // Create Wikipedia tool with API wrapper
-    wikipedia_tool ← WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper(wiki_client=None))
-    
-    // Create Tavily search tool
-    tavily_tool ← TavilySearch()
-    
     // Define browser MCP URL
-    browser_mcp_url ← "http://0.0.0.0:3000/mcp"
+    browser_mcp_url = "http://0.0.0.0:3000/mcp"
     
     // Retrieve MCP tools using await get_browser_mcp_tools
-    mcp_tools ← AWAIT get_browser_mcp_tools(browser_mcp_url)
+    mcp_tools = await get_browser_mcp_tools(browser_mcp_url)
     
     // Return comprehensive list of research tools
-    research_tools ← [
+    RETURN [
         youtube_transcript_tool,
         tavily_tool,
         wikipedia_tool,
@@ -1687,8 +1975,6 @@ ASYNC FUNCTION get_research_tools() -> list
         text_file_tool,
         *mcp_tools  // Unpack all MCP tools
     ]
-    
-    RETURN research_tools
     
 END FUNCTION
 ```
@@ -1702,9 +1988,7 @@ END FUNCTION
 - **Tool Integration**: Combines multiple tool types into unified list
 
 **External Dependencies**:
-- **WikipediaQueryRun**: LangChain Wikipedia tool for knowledge base access
-- **WikipediaAPIWrapper**: API wrapper for Wikipedia queries
-- **TavilySearch**: LangChain Tavily search tool for web search
+- **MCP Server**: Model Context Protocol server for tool access
 
 **Global variables**: None
 
@@ -1730,28 +2014,27 @@ END FUNCTION
   - Creates a factory function that returns a researcher LLM node
   - Injects configuration and LLM dependencies into the node function
   - Handles LLM invocation with system prompt and state messages
-  - Validates LLM response against output schema
-  - Returns appropriate response format based on validation result
+  - Logs tool calls if present in the response
+  - Returns response in messages format for subgraph processing
 
 **Component interface**:
 - **Inputs**:
-  - config: AgentConfig // The agent configuration containing system prompt and output schema
+  - config: AgentConfig // The agent configuration containing system prompt
   - llm_researcher: ChatOpenAI // The LLM instance for researcher operations
 - **Outputs**:
   - Callable[[ResearcherState], ResearcherState] // The researcher LLM node function
 - **Validations**:
-  - Handled by validate_output_matches_json_schema function
+  - Handled by subgraph processing
 
-**Direct Dependencies with Other Components**:
-- validate_output_matches_json_schema function
+**Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
 1. Define inner function researcher_llm_node that takes ResearcherState as parameter
-2. Create system prompt using SystemMessage with config.system_prompt content
+2. Create system prompt as list containing SystemMessage with config.system_prompt content
 3. Invoke LLM with system prompt concatenated with state messages
-4. Check if response matches output schema using validate_output_matches_json_schema
-5. If validation succeeds, return messages with JSON-dumped response and result field
-6. If validation fails, return messages with raw response
+4. Check if response has tool_calls attribute and tool_calls exist
+5. Log tool calls if present
+6. Return messages with the response in dictionary format
 7. Return the inner researcher_llm_node function
 
 **Pseudocode**:
@@ -1761,16 +2044,14 @@ FUNCTION create_researcher_llm_node(config: AgentConfig, llm_researcher: ChatOpe
     Purpose: Create a researcher LLM node function with the given prompt and LLM
     
     BEHAVIOR:
-    - Accepts: config (AgentConfig) - The agent configuration containing system prompt and output schema
+    - Accepts: config (AgentConfig) - The agent configuration containing system prompt
     - Accepts: llm_researcher (ChatOpenAI) - The LLM instance for researcher operations
     - Produces: Callable[[ResearcherState], ResearcherState] - The researcher LLM node function
-    - Handles: LLM node creation with dependency injection and response validation
+    - Handles: LLM node creation with dependency injection and response handling
     
     DEPENDENCIES:
     - LangChain SystemMessage: Library for creating system messages
-    - LangChain AIMessage: Library for creating AI response messages
     - ChatOpenAI: LLM interface for researcher operations
-    - validate_output_matches_json_schema: Function for response validation
     
     CLOSED-OVER VARIABLES:
     - config: AgentConfig - Configuration passed from outer scope
@@ -1779,29 +2060,26 @@ FUNCTION create_researcher_llm_node(config: AgentConfig, llm_researcher: ChatOpe
     IMPLEMENTATION NOTES:
     - Should create inner function with injected dependencies
     - Must handle LLM invocation with proper message formatting
-    - Should validate responses against output schema
-    - Should return appropriate response format based on validation
+    - Should log tool calls if present in the response
+    - Should return response in messages format for subgraph processing
     */
     
     // Define inner function researcher_llm_node that takes ResearcherState as parameter
     FUNCTION researcher_llm_node(state: ResearcherState) -> ResearcherState
-        // Create system prompt using SystemMessage with config.system_prompt content
-        system_prompt ← SystemMessage(content=config.system_prompt)
+        // Create system prompt as list containing SystemMessage with config.system_prompt content
+        sys_prompt = [SystemMessage(content=config.system_prompt)]
         
         // Invoke LLM with system prompt concatenated with state messages
-        response ← llm_researcher.invoke([system_prompt] + state.messages)
+        response = llm_researcher.invoke(sys_prompt + state["messages"])
         
-        // Check if response matches output schema using validate_output_matches_json_schema
-        IF validate_output_matches_json_schema(response.content, config.output_schemas.keys()) THEN
-            // If validation succeeds, return messages with JSON-dumped response and result field
-            result_message ← AIMessage(content=json.dumps({"result": response.content}))
-        ELSE
-            // If validation fails, return messages with raw response
-            result_message ← AIMessage(content=response.content)
+        // Check if response has tool_calls attribute and tool_calls exist
+        IF hasattr(response, 'tool_calls') AND response.tool_calls THEN
+            // Log tool calls with INFO level
+            LOG_INFO(f"Researcher tool calls: {response.tool_calls}")
         END IF
         
-        // Return updated state with new messages
-        RETURN ResearcherState(messages=state.messages + [result_message], step_id=state.step_id, results=state.results)
+        // Return messages with the response in dictionary format
+        RETURN {"messages": [response]}
     END FUNCTION
     
     // Return the inner researcher_llm_node function
@@ -1812,13 +2090,12 @@ END FUNCTION
 
 **Workflow Control**: None
 
-**State Management**: Accesses messages field in ResearcherState input and returns updated ResearcherState with new messages.
+**State Management**: Accesses messages field in ResearcherState input and returns updated ResearcherState with new messages. No state field updates are performed.
 
 **Communication Patterns**: None. This component does not communicate, rather it creates a function for LLM processing
 
 **External Dependencies**:
 - **LangChain SystemMessage**: Library for creating system messages
-- **LangChain AIMessage**: Library for creating AI response messages
 - **ChatOpenAI**: LLM interface for researcher operations
 
 **Global variables**: None
@@ -1896,27 +2173,25 @@ FUNCTION create_researcher_subgraph(researcher_llm_node: Callable, research_tool
     */
     
     // Create StateGraph instance with ResearcherState as the state type
-    graph ← StateGraph(ResearcherState)
+    researcher_graph = StateGraph(ResearcherState)
     
     // Add "researcher" node to the graph using researcher_llm_node function
-    graph.add_node("researcher", researcher_llm_node)
+    researcher_graph.add_node("researcher", researcher_llm_node)
     
     // Add "tools" node to the graph using ToolNode with research_tools
-    graph.add_node("tools", ToolNode(research_tools))
+    researcher_graph.add_node("tools", ToolNode(research_tools))
     
     // Add edge from START to "researcher" node
-    graph.add_edge(START, "researcher")
+    researcher_graph.add_edge(START, "researcher")
     
     // Add conditional edges from "researcher" node using tools_condition
-    graph.add_conditional_edges("researcher", tools_condition)
+    researcher_graph.add_conditional_edges("researcher", tools_condition)
     
     // Add edge from "tools" node back to "researcher" node
-    graph.add_edge("tools", "researcher")
+    researcher_graph.add_edge("tools", "researcher")
     
     // Compile the graph and return the compiled StateGraph
-    compiled_graph ← graph.compile()
-    
-    RETURN compiled_graph
+    RETURN researcher_graph.compile()
     
 END FUNCTION
 ```
@@ -2005,22 +2280,22 @@ FUNCTION unit_converter(quantity: string, to_unit: string) -> string
     */
     
     // Log the beginning of unit conversion with quantity and target unit
-    LOG_INFO(f"Starting unit conversion: {quantity} to {to_unit}")
+    LOG_INFO(f"Unit converter converting {quantity} to {to_unit}")
     
     // Create Pint UnitRegistry instance
-    ureg ← UnitRegistry()
+    ureg = pint.UnitRegistry()
     
     // Parse the input quantity string using the UnitRegistry
-    parsed_quantity ← ureg(quantity)
+    q = ureg(quantity)
     
     // Convert the quantity to the target unit using the to() method
-    converted_quantity ← parsed_quantity.to(to_unit)
+    result = q.to(to_unit)
     
     // Log the conversion result
-    LOG_INFO(f"Unit conversion completed: {converted_quantity}")
+    LOG_INFO(f"Unit converter result: {result}")
     
     // Return the result as a string
-    RETURN str(converted_quantity)
+    RETURN str(result)
     
 END FUNCTION
 ```
@@ -2043,8 +2318,8 @@ END FUNCTION
 - **@tool**: LangChain tool decorator - marks function as a LangGraph tool
 
 **Logging**:
-- Append logging (INFO) at the beginning of processing with quantity and target unit
-- Append logging (INFO) at the end of successful processing with result
+- Append logging (INFO) at the beginning of processing with quantity and target unit: "Unit converter converting {quantity} to {to_unit}"
+- Append logging (INFO) at the end of successful processing with result: "Unit converter result: {result}"
 
 **Error Handling**:
 - None. All errors and exceptions will be uncaught and bubble up the call stack.
@@ -2078,7 +2353,7 @@ END FUNCTION
 **Internal Logic**:
 1. Log the beginning of calculation with the expression
 2. Import the math module
-3. Create allowed_names dictionary with math functions (excluding those starting with "__")
+3. Create allowed_names dictionary with math functions using dictionary comprehension (excluding those starting with "__")
 4. Evaluate the expression using eval with restricted namespace (no builtins, only math functions)
 5. Log the calculation result
 6. Return the result as a string
@@ -2107,24 +2382,19 @@ FUNCTION calculator(expression: string) -> string
     */
     
     // Log the beginning of calculation with the expression
-    LOG_INFO(f"Starting calculation: {expression}")
+    LOG_INFO(f"Calculator evaluating expression: {expression}")
     
     // Import the math module
     IMPORT math
     
-    // Create allowed_names dictionary with math functions (excluding those starting with "__")
-    allowed_names ← {}
-    FOR EACH name IN dir(math) DO
-        IF NOT name.startswith("__") THEN
-            allowed_names[name] ← getattr(math, name)
-        END IF
-    END FOR
+    // Create allowed_names dictionary with math functions using dictionary comprehension (excluding those starting with "__")
+    allowed_names = {k: v for k, v in math.__dict__.items() if not k.startswith("__")}
     
     // Evaluate the expression using eval with restricted namespace (no builtins, only math functions)
-    result ← eval(expression, {"__builtins__": {}}, allowed_names)
+    result = eval(expression, {"__builtins__": None}, allowed_names)
     
     // Log the calculation result
-    LOG_INFO(f"Calculation completed: {result}")
+    LOG_INFO(f"Calculator result: {result}")
     
     // Return the result as a string
     RETURN str(result)
@@ -2151,8 +2421,100 @@ END FUNCTION
 - **@tool**: LangChain tool decorator - marks function as a LangGraph tool
 
 **Logging**:
-- Append logging (INFO) at the beginning of processing with expression
-- Append logging (INFO) at the end of successful processing with result
+- Append logging (INFO) at the beginning of processing with expression: "Calculator evaluating expression: {expression}"
+- Append logging (INFO) at the end of successful processing with result: "Calculator result: {result}"
+
+**Error Handling**:
+- None. All errors and exceptions will be uncaught and bubble up the call stack.
+- This enables a global error handling design implemented in the entry point.
+
+#### Python REPL Tool
+
+**Component name**: python_repl_tool
+
+**Component type**: function
+
+**Component purpose and responsibilities**:
+- **Purpose**: Execute Python code and return the result
+- **Responsibilities**: 
+  - Creates a Python REPL tool instance for code execution
+  - Executes Python code provided as a string
+  - Returns the result of code execution as a string
+  - Provides Python code execution capabilities for expert reasoning
+
+**Component interface**:
+- **Inputs**:
+  - code: string // The Python code to execute
+- **Outputs**:
+  - string // The result of the code execution as a string
+- **Validations**:
+  - Handled by PythonREPLTool validation
+  - Code execution validation handled by Python interpreter
+
+**Direct Dependencies with Other Components**: None
+
+**Internal Logic**:
+1. Log the beginning of Python code execution with the code
+2. Create PythonREPLTool instance
+3. Invoke the Python REPL tool with the provided code
+4. Return the result of code execution
+
+**Pseudocode**:
+```
+FUNCTION python_repl_tool(code: string) -> string
+    /*
+    Purpose: Execute Python code and return the result
+    
+    BEHAVIOR:
+    - Accepts: code (string) - The Python code to execute
+    - Produces: string - The result of the code execution as a string
+    - Handles: Python code execution using LangChain PythonREPLTool
+    
+    DEPENDENCIES:
+    - LangChain PythonREPLTool: Library for Python code execution
+    - LangChain @tool Decorator: Library to mark function as a LangGraph tool
+    
+    IMPLEMENTATION NOTES:
+    - Should create PythonREPLTool instance for each execution
+    - Must execute Python code safely using LangChain's implementation
+    - Should return execution results as formatted strings
+    - Should provide Python code execution capabilities for expert reasoning
+    */
+    
+    // Log the beginning of Python code execution with the code
+    LOG_INFO(f"Executing the following python code: {code}")
+    
+    // Create PythonREPLTool instance
+    python_repl_tool = PythonREPLTool()
+    
+    // Invoke the Python REPL tool with the provided code
+    result = python_repl_tool.invoke(code)
+    
+    // Return the result of code execution
+    RETURN result
+    
+END FUNCTION
+```
+
+**Workflow Control**: None
+
+**State Management**: Does not access any graph states.
+
+**Communication Patterns**: None. This component does not communicate, rather it executes Python code
+
+**External Dependencies**:
+- **LangChain PythonREPLTool**: Library for Python code execution
+- **LangChain @tool Decorator**: Library to mark function as a LangGraph tool
+
+**Global variables**: None
+
+**Closed-over variables**: None
+
+**Decorators**:
+- **@tool**: LangChain tool decorator - marks function as a LangGraph tool
+
+**Logging**:
+- Append logging (INFO) at the beginning of processing with code to be executed
 
 **Error Handling**:
 - None. All errors and exceptions will be uncaught and bubble up the call stack.
@@ -2167,8 +2529,7 @@ END FUNCTION
 **Component purpose and responsibilities**:
 - **Purpose**: Get the expert tools
 - **Responsibilities**: 
-  - Creates Python REPL tool for code execution
-  - Compiles list of expert tools including unit converter and calculator
+  - Returns list of existing expert tools (unit_converter, calculator, python_repl_tool)
   - Provides expert-level computation and analysis tools
   - Returns comprehensive list of tools for expert reasoning
 
@@ -2182,10 +2543,10 @@ END FUNCTION
 **Direct Dependencies with Other Components**:
 - unit_converter function
 - calculator function
+- python_repl_tool function
 
 **Internal Logic**:
-1. Create Python REPL tool using PythonREPLTool()
-2. Return list containing unit_converter, calculator, and python_repl_tool
+1. Return list containing unit_converter, calculator, and python_repl_tool
 
 **Pseudocode**:
 ```
@@ -2199,22 +2560,19 @@ FUNCTION get_expert_tools() -> List[Tool]
     - Handles: Tool compilation for expert-level computation and analysis
     
     DEPENDENCIES:
-    - LangChain PythonREPLTool: Library for creating Python REPL tool
     - unit_converter: Function for unit conversion operations
     - calculator: Function for mathematical calculations
+    - python_repl_tool: Function for Python code execution
     
     IMPLEMENTATION NOTES:
-    - Should create Python REPL tool for code execution
-    - Must include unit converter and calculator tools
+    - Should return existing unit converter and calculator tools
+    - Should return existing Python REPL tool
     - Should provide comprehensive expert-level computation tools
     - Should return list of tools for expert reasoning
     */
     
-    // Create Python REPL tool using PythonREPLTool()
-    python_repl_tool ← PythonREPLTool()
-    
     // Return list containing unit_converter, calculator, and python_repl_tool
-    expert_tools ← [unit_converter, calculator, python_repl_tool]
+    expert_tools = [unit_converter, calculator, python_repl_tool]
     
     RETURN expert_tools
     
@@ -2225,10 +2583,9 @@ END FUNCTION
 
 **State Management**: Does not access any graph states.
 
-**Communication Patterns**: None. This component does not communicate, rather it creates tool instances
+**Communication Patterns**: None. This component does not communicate, rather it returns existing tool instances
 
-**External Dependencies**:
-- **LangChain PythonREPLTool**: Library for creating Python REPL tool
+**External Dependencies**: None
 
 **Global variables**: None
 
@@ -2254,32 +2611,27 @@ END FUNCTION
   - Creates a factory function that returns an expert LLM node
   - Injects configuration and LLM dependencies into the node function
   - Handles LLM invocation with system prompt and state messages
-  - Validates LLM response against output schema
-  - Updates expert state with answer and reasoning
-  - Returns appropriate response format based on validation result
+  - Logs tool calls if present in the response
+  - Returns response in messages format for subgraph processing
 
 **Component interface**:
 - **Inputs**:
-  - config: AgentConfig // The agent configuration containing system prompt and output schema
+  - config: AgentConfig // The agent configuration containing system prompt
   - llm_expert: ChatOpenAI // The LLM instance for expert operations
 - **Outputs**:
   - Callable[[ExpertState], ExpertState] // The expert LLM node function
 - **Validations**:
-  - Handled by validate_output_matches_json_schema function
+  - Handled by subgraph processing
 
-**Direct Dependencies with Other Components**:
-- validate_output_matches_json_schema function
+**Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
 1. Define inner function expert_llm_node that takes ExpertState as parameter
-2. Create system prompt using SystemMessage with config.system_prompt content
+2. Create system prompt as list containing SystemMessage with config.system_prompt content
 3. Invoke LLM with system prompt concatenated with state messages
-4. Check if response matches output schema using validate_output_matches_json_schema
-5. If validation succeeds:
-   - Update state["expert_answer"] with response["expert_answer"]
-   - Update state["expert_reasoning"] with response["reasoning_trace"]
-   - Create AIMessage with formatted expert answer and reasoning content
-6. Return messages with the response (either formatted or raw)
+4. Check if response has tool_calls attribute and tool_calls exist
+5. If tool calls exist, log them with INFO level
+6. Return messages with the response in dictionary format
 7. Return the inner expert_llm_node function
 
 **Pseudocode**:
@@ -2314,40 +2666,20 @@ FUNCTION create_expert_llm_node(config: AgentConfig, llm_expert: ChatOpenAI) -> 
     
     // Define inner function expert_llm_node that takes ExpertState as parameter
     FUNCTION expert_llm_node(state: ExpertState) -> ExpertState
-        // Create system prompt using SystemMessage with config.system_prompt content
-        system_prompt ← SystemMessage(content=config.system_prompt)
+        // Create system prompt as list containing SystemMessage with config.system_prompt content
+        sys_prompt = [SystemMessage(content=config.system_prompt)]
         
         // Invoke LLM with system prompt concatenated with state messages
-        response ← llm_expert.invoke([system_prompt] + state.messages)
+        response = llm_expert.invoke(sys_prompt + state["messages"])
         
-        // Check if response matches output schema using validate_output_matches_json_schema
-        IF validate_output_matches_json_schema(response.content, config.output_schemas.keys()) THEN
-            // If validation succeeds:
-            // Update state["expert_answer"] with response["expert_answer"]
-            state.expert_answer ← response["expert_answer"]
-            
-            // Update state["expert_reasoning"] with response["reasoning_trace"]
-            state.expert_reasoning ← response["reasoning_trace"]
-            
-            // Create AIMessage with formatted expert answer and reasoning content
-            result_message ← AIMessage(content=json.dumps({
-                "expert_answer": response["expert_answer"],
-                "reasoning_trace": response["reasoning_trace"]
-            }))
-        ELSE
-            // Return messages with raw response
-            result_message ← AIMessage(content=response.content)
+        // Check if response has tool_calls attribute and tool_calls exist
+        IF hasattr(response, 'tool_calls') AND response.tool_calls THEN
+            // Log tool calls with INFO level
+            LOG_INFO(f"Expert tool calls: {response.tool_calls}")
         END IF
         
-        // Return updated state with new messages
-        RETURN ExpertState(
-            messages=state.messages + [result_message],
-            question=state.question,
-            research_steps=state.research_steps,
-            research_results=state.research_results,
-            expert_answer=state.expert_answer,
-            expert_reasoning=state.expert_reasoning
-        )
+        // Return messages with the response in dictionary format
+        RETURN {"messages": [response]}
     END FUNCTION
     
     // Return the inner expert_llm_node function
@@ -2358,13 +2690,12 @@ END FUNCTION
 
 **Workflow Control**: None
 
-**State Management**: Accesses messages field in ExpertState input and returns updated ExpertState with new messages. Updates expert_answer and expert_reasoning fields in state when validation succeeds.
+**State Management**: Accesses messages field in ExpertState input and returns updated ExpertState with new messages. No state field updates are performed.
 
 **Communication Patterns**: None. This component does not communicate, rather it creates a function for LLM processing
 
 **External Dependencies**:
 - **LangChain SystemMessage**: Library for creating system messages
-- **LangChain AIMessage**: Library for creating AI response messages
 - **ChatOpenAI**: LLM interface for expert operations
 
 **Global variables**: None
@@ -2442,27 +2773,25 @@ FUNCTION create_expert_subgraph(expert_llm_node: Callable, expert_tools: list) -
     */
     
     // Create StateGraph instance with ExpertState as the state type
-    graph ← StateGraph(ExpertState)
+    expert_graph = StateGraph(ExpertState)
     
     // Add "expert" node to the graph using expert_llm_node function
-    graph.add_node("expert", expert_llm_node)
+    expert_graph.add_node("expert", expert_llm_node)
     
     // Add "tools" node to the graph using ToolNode with expert_tools
-    graph.add_node("tools", ToolNode(expert_tools))
+    expert_graph.add_node("tools", ToolNode(expert_tools))
     
     // Add edge from START to "expert" node
-    graph.add_edge(START, "expert")
+    expert_graph.add_edge(START, "expert")
     
     // Add conditional edges from "expert" node using tools_condition
-    graph.add_conditional_edges("expert", tools_condition)
+    expert_graph.add_conditional_edges("expert", tools_condition)
     
     // Add edge from "tools" node back to "expert" node
-    graph.add_edge("tools", "expert")
+    expert_graph.add_edge("tools", "expert")
     
     // Compile the graph and return the compiled StateGraph
-    compiled_graph ← graph.compile()
-    
-    RETURN compiled_graph
+    RETURN expert_graph.compile()
     
 END FUNCTION
 ```
@@ -2522,28 +2851,23 @@ END FUNCTION
 **Internal Logic**:
 1. Define inner function input_interface that takes GraphState as parameter
 2. Log the beginning of input interface execution
-3. Check if state has question, handle error if not provided
-4. Initialize file field with existing value or None
-5. Initialize planner work fields (research_steps and expert_steps as empty lists)
-6. Initialize researcher work fields:
-   - Set current_research_index to -1
-   - Set researcher_states to empty dict
-   - Set research_results to empty list
-7. Initialize expert work fields:
-   - Set expert_state to None
-   - Set expert_answer to empty string
-   - Set expert_reasoning to empty string
-8. Initialize critic work fields (all decision and feedback fields to empty strings)
-9. Initialize finalizer work fields (final_answer and final_reasoning_trace to empty strings)
-10. Initialize orchestrator work fields:
-    - Set agent_messages to empty list
-    - Set current_step to "input"
-    - Set next_step to "planner"
-11. Initialize retry counts to 0 for all agents
-12. Set retry limits from agent_configs for planner, researcher, and expert
-13. Log successful completion
-14. Return the updated state
-15. Return the inner input_interface function
+3. Handle question extraction with proper error handling:
+   - Check if state.get("question") is falsy or if len(state["question"]) == 0
+   - Raise ValueError if no question is provided
+4. Initialize all state fields first to ensure they exist for error handling:
+   - Set file field with existing value or None
+   - Initialize planner work fields (research_steps and expert_steps as empty lists)
+   - Initialize researcher work fields (current_research_index = -1, researcher_states = dict(), research_results = [])
+   - Initialize expert work fields (expert_state = None, expert_answer = "", expert_reasoning = "")
+   - Initialize critic work fields (all decision and feedback fields to empty strings)
+   - Initialize finalizer work fields (final_answer = "", final_reasoning_trace = "")
+   - Initialize orchestrator work fields (agent_messages = [], current_step = "input", next_step = "planner")
+   - Initialize retry counts to 0 for all agents (planner_retry_count, researcher_retry_count, expert_retry_count)
+   - Set retry limits from agent_configs for planner, researcher, and expert
+   - Set retry_failed to False
+5. Log successful completion
+6. Return the updated state
+7. Return the inner input_interface function
 
 **Pseudocode**:
 ```
@@ -2570,86 +2894,63 @@ FUNCTION create_input_interface(agent_configs: dict[str, AgentConfig]) -> Callab
     // Define inner function input_interface that takes GraphState as parameter
     FUNCTION input_interface(state: GraphState) -> GraphState
         // Log the beginning of input interface execution
-        LOG_INFO("Starting input interface execution")
+        LOG_INFO("Input interface starting execution")
         
-        // Check if state has question, handle error if not provided
-        IF state.question IS EMPTY OR state.question IS none THEN
+        // Handle question extraction with proper error handling
+        IF NOT state.get("question") OR LENGTH(state["question"]) = 0 THEN
             RAISE ValueError("No question provided to input interface")
         END IF
         
-        // Initialize file field with existing value or None
-        file_path ← state.file_path OR none
+        // Initialize all state fields first to ensure they exist for error handling
+        state["file"] = state["file"] IF state["file"] ELSE none
         
         // Initialize planner work fields (research_steps and expert_steps as empty lists)
-        research_steps ← []
-        expert_steps ← []
+        state["research_steps"] = []
+        state["expert_steps"] = []
         
         // Initialize researcher work fields
-        current_research_index ← -1
-        researcher_states ← {}
-        research_results ← []
+        state["current_research_index"] = -1
+        state["researcher_states"] = dict()
+        state["research_results"] = []
         
         // Initialize expert work fields
-        expert_state ← none
-        expert_answer ← ""
-        expert_reasoning ← ""
+        state["expert_state"] = none
+        state["expert_answer"] = ""
+        state["expert_reasoning"] = ""
         
         // Initialize critic work fields (all decision and feedback fields to empty strings)
-        critic_planner_decision ← ""
-        critic_planner_feedback ← ""
-        critic_researcher_decision ← ""
-        critic_researcher_feedback ← ""
-        critic_expert_decision ← ""
-        critic_expert_feedback ← ""
+        state["critic_planner_decision"] = ""
+        state["critic_planner_feedback"] = ""
+        state["critic_researcher_decision"] = ""
+        state["critic_researcher_feedback"] = ""
+        state["critic_expert_decision"] = ""
+        state["critic_expert_feedback"] = ""
         
         // Initialize finalizer work fields (final_answer and final_reasoning_trace to empty strings)
-        final_answer ← ""
-        final_reasoning_trace ← ""
+        state["final_answer"] = ""
+        state["final_reasoning_trace"] = ""
         
         // Initialize orchestrator work fields
-        agent_messages ← []
-        current_step ← "input"
-        next_step ← "planner"
+        state["agent_messages"] = []
+        state["current_step"] = "input"
+        state["next_step"] = "planner"
         
         // Initialize retry counts to 0 for all agents
-        retry_count ← {"planner": 0, "researcher": 0, "expert": 0}
+        state["planner_retry_count"] = 0
+        state["researcher_retry_count"] = 0
+        state["expert_retry_count"] = 0
         
         // Set retry limits from agent_configs for planner, researcher, and expert
-        retry_limit ← {
-            "planner": agent_configs["planner"].retry_limits.get("planner", 3),
-            "researcher": agent_configs["researcher"].retry_limits.get("researcher", 3),
-            "expert": agent_configs["expert"].retry_limits.get("expert", 3)
-        }
+        state["planner_retry_limit"] = agent_configs["planner"].retry_limit
+        state["researcher_retry_limit"] = agent_configs["researcher"].retry_limit
+        state["expert_retry_limit"] = agent_configs["expert"].retry_limit
+        state["retry_failed"] = False
         
         // Log successful completion
-        LOG_INFO("Input interface execution completed successfully")
+        LOG_INFO("Input interface completed successfully")
         
         // Return the updated state
-        RETURN GraphState(
-            question=state.question,
-            file_path=file_path,
-            research_steps=research_steps,
-            expert_steps=expert_steps,
-            current_research_index=current_research_index,
-            researcher_states=researcher_states,
-            research_results=research_results,
-            expert_state=expert_state,
-            expert_answer=expert_answer,
-            expert_reasoning=expert_reasoning,
-            critic_planner_decision=critic_planner_decision,
-            critic_planner_feedback=critic_planner_feedback,
-            critic_researcher_decision=critic_researcher_decision,
-            critic_researcher_feedback=critic_researcher_feedback,
-            critic_expert_decision=critic_expert_decision,
-            critic_expert_feedback=critic_expert_feedback,
-            final_answer=final_answer,
-            final_reasoning_trace=final_reasoning_trace,
-            agent_messages=agent_messages,
-            current_step=current_step,
-            next_step=next_step,
-            retry_count=retry_count,
-            retry_limit=retry_limit
-        )
+        RETURN state
     END FUNCTION
     
     // Return the inner input_interface function
@@ -2674,8 +2975,8 @@ END FUNCTION
 **Decorators**: None
 
 **Logging**:
-- Append logging (INFO) at the beginning of execution
-- Append logging (INFO) at the end of successful completion
+- Logs INFO level message at the beginning: "Input interface starting execution"
+- Logs INFO level message at the end: "Input interface completed successfully"
 
 **Error Handling**:
 - Raises ValueError if no question is provided to input interface
@@ -2709,41 +3010,44 @@ END FUNCTION
 **Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
-1. Check if current_step equals "critic_planner"
-2. If current_step is "critic_planner":
-   - Check if critic_planner_decision equals "approve"
-   - If critic_planner_decision is "approve":
-     - Check if length of research_steps list is greater than 0
-     - If research_steps has items, set next_step to "researcher"
-     - If research_steps is empty, set next_step to "expert"
-   - If critic_planner_decision is "reject":
-     - Set next_step to "planner"
-     - Increment planner_retry_count by 1
-3. Check if current_step equals "critic_researcher"
-4. If current_step is "critic_researcher":
+1. Handle critic decisions and set next step accordingly using elif control structure:
+   - If current_step is "critic_planner":
+     - Check if critic_planner_decision equals "approve"
+     - If critic_planner_decision is "approve":
+       - Log "Planner approved."
+       - Check if length of research_steps list is greater than 0
+       - If research_steps has items, set next_step to "researcher"
+       - If research_steps is empty, set next_step to "expert"
+     - If critic_planner_decision is "reject":
+       - Set next_step to "planner"
+       - Increment planner_retry_count by 1
+       - Log "Planner rejected. Retry count: {planner_retry_count}"
+2. If current_step is "critic_researcher":
    - Check if critic_researcher_decision equals "approve"
    - If critic_researcher_decision is "approve":
+     - Log "Researcher approved."
      - Check if current_research_index + 1 is greater than or equal to length of research_steps
      - If all research steps completed, set next_step to "expert"
      - If more research steps remain, set next_step to "researcher"
    - If critic_researcher_decision is "reject":
      - Set next_step to "researcher"
      - Increment researcher_retry_count by 1
-5. Check if current_step equals "critic_expert"
-6. If current_step is "critic_expert":
+     - Log "Researcher rejected. Retry count: {researcher_retry_count}"
+3. If current_step is "critic_expert":
    - Check if critic_expert_decision equals "approve"
    - If critic_expert_decision is "approve":
+     - Log "Expert approved."
      - Set next_step to "finalizer"
    - If critic_expert_decision is "reject":
      - Set next_step to "expert"
      - Increment expert_retry_count by 1
-7. Handle initial state and non-critic steps:
-   - Check if current_step is empty string or equals "input"
-   - If current_step is empty or "input", set next_step to "planner"
+     - Log "Expert rejected. Retry count: {expert_retry_count}"
+4. Handle initial state and non-critic steps using elif:
+   - If current_step is empty string or equals "input", set next_step to "planner"
    - If current_step equals "planner", set next_step to "critic_planner"
    - If current_step equals "researcher", set next_step to "critic_researcher"
    - If current_step equals "expert", set next_step to "critic_expert"
-8. Return the updated state
+5. Return the updated state
 
 **Pseudocode**:
 ```
@@ -2764,77 +3068,55 @@ FUNCTION determine_next_step(state: GraphState) -> GraphState
     - Should determine routing logic for multi-agent workflow
     */
     
-    // Check if current_step equals "critic_planner"
-    IF state.current_step = "critic_planner" THEN
-        // Check if critic_planner_decision equals "approve"
-        IF state.critic_planner_decision = "approve" THEN
-            // Check if length of research_steps list is greater than 0
-            IF length(state.research_steps) > 0 THEN
-                // If research_steps has items, set next_step to "researcher"
-                state.next_step ← "researcher"
+    // Handle critic decisions and set next step accordingly
+    IF state["current_step"] = "critic_planner" THEN
+        IF state["critic_planner_decision"] = "approve" THEN
+            LOG_INFO("Planner approved.")
+            IF LENGTH(state["research_steps"]) > 0 THEN
+                state["next_step"] = "researcher"
             ELSE
-                // If research_steps is empty, set next_step to "expert"
-                state.next_step ← "expert"
+                state["next_step"] = "expert"
             END IF
-        ELSE
-            // If critic_planner_decision is "reject":
-            // Set next_step to "planner"
-            state.next_step ← "planner"
-            // Increment planner_retry_count by 1
-            state.retry_count["planner"] ← state.retry_count["planner"] + 1
+        ELSE IF state["critic_planner_decision"] = "reject" THEN
+            state["next_step"] = "planner"
+            state["planner_retry_count"] += 1
+            LOG_INFO(f"Planner rejected. Retry count: {state['planner_retry_count']}")
         END IF
-    END IF
     
-    // Check if current_step equals "critic_researcher"
-    IF state.current_step = "critic_researcher" THEN
-        // Check if critic_researcher_decision equals "approve"
-        IF state.critic_researcher_decision = "approve" THEN
-            // Check if current_research_index + 1 is greater than or equal to length of research_steps
-            IF (state.current_research_index + 1) >= length(state.research_steps) THEN
-                // If all research steps completed, set next_step to "expert"
-                state.next_step ← "expert"
+    ELSE IF state["current_step"] = "critic_researcher" THEN
+        IF state["critic_researcher_decision"] = "approve" THEN
+            LOG_INFO("Researcher approved.")
+            // Check if all research steps are completed
+            IF state["current_research_index"] + 1 >= LENGTH(state["research_steps"]) THEN
+                state["next_step"] = "expert"
             ELSE
-                // If more research steps remain, set next_step to "researcher"
-                state.next_step ← "researcher"
+                state["next_step"] = "researcher"
             END IF
-        ELSE
-            // If critic_researcher_decision is "reject":
-            // Set next_step to "researcher"
-            state.next_step ← "researcher"
-            // Increment researcher_retry_count by 1
-            state.retry_count["researcher"] ← state.retry_count["researcher"] + 1
+        ELSE IF state["critic_researcher_decision"] = "reject" THEN
+            state["next_step"] = "researcher"
+            state["researcher_retry_count"] += 1
+            LOG_INFO(f"Researcher rejected. Retry count: {state['researcher_retry_count']}")
         END IF
-    END IF
     
-    // Check if current_step equals "critic_expert"
-    IF state.current_step = "critic_expert" THEN
-        // Check if critic_expert_decision equals "approve"
-        IF state.critic_expert_decision = "approve" THEN
-            // Set next_step to "finalizer"
-            state.next_step ← "finalizer"
-        ELSE
-            // If critic_expert_decision is "reject":
-            // Set next_step to "expert"
-            state.next_step ← "expert"
-            // Increment expert_retry_count by 1
-            state.retry_count["expert"] ← state.retry_count["expert"] + 1
+    ELSE IF state["current_step"] = "critic_expert" THEN
+        IF state["critic_expert_decision"] = "approve" THEN
+            LOG_INFO("Expert approved.")
+            state["next_step"] = "finalizer"
+        ELSE IF state["critic_expert_decision"] = "reject" THEN
+            state["next_step"] = "expert"
+            state["expert_retry_count"] += 1
+            LOG_INFO(f"Expert rejected. Retry count: {state['expert_retry_count']}")
         END IF
-    END IF
     
-    // Handle initial state and non-critic steps:
-    // Check if current_step is empty string or equals "input"
-    IF state.current_step = "" OR state.current_step = "input" THEN
-        // If current_step is empty or "input", set next_step to "planner"
-        state.next_step ← "planner"
-    ELSE IF state.current_step = "planner" THEN
-        // If current_step equals "planner", set next_step to "critic_planner"
-        state.next_step ← "critic_planner"
-    ELSE IF state.current_step = "researcher" THEN
-        // If current_step equals "researcher", set next_step to "critic_researcher"
-        state.next_step ← "critic_researcher"
-    ELSE IF state.current_step = "expert" THEN
-        // If current_step equals "expert", set next_step to "critic_expert"
-        state.next_step ← "critic_expert"
+    // Handle initial state and non-critic steps
+    ELSE IF state["current_step"] = "" OR state["current_step"] = "input" THEN
+        state["next_step"] = "planner"
+    ELSE IF state["current_step"] = "planner" THEN
+        state["next_step"] = "critic_planner"
+    ELSE IF state["current_step"] = "researcher" THEN
+        state["next_step"] = "critic_researcher"
+    ELSE IF state["current_step"] = "expert" THEN
+        state["next_step"] = "critic_expert"
     END IF
     
     // Return the updated state
@@ -2845,7 +3127,7 @@ END FUNCTION
 
 **Workflow Control**: Controls workflow state transitions by determining the next step based on current state and critic decisions.
 
-**State Management**: Reads current_step, critic decisions, and retry counts from state. Updates next_step and retry counts in state based on decision logic.
+**State Management**: Reads current_step, critic decisions, and retry counts from state. Updates next_step and retry counts (planner_retry_count, researcher_retry_count, expert_retry_count) in state based on decision logic.
 
 **Communication Patterns**: None. This component does not communicate, rather it determines workflow routing
 
@@ -2889,12 +3171,13 @@ END FUNCTION
 **Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
-1. Check if any agent has exceeded its retry limit:
-   - Compare planner_retry_count >= planner_retry_limit
-   - Compare researcher_retry_count >= researcher_retry_limit
-   - Compare expert_retry_count >= expert_retry_limit
+1. Check if any agent has exceeded its retry limit using a single if statement with or conditions:
+   - Check if planner_retry_count >= planner_retry_limit OR
+   - Check if researcher_retry_count >= researcher_retry_limit OR  
+   - Check if expert_retry_count >= expert_retry_limit
 2. If any retry limit is exceeded:
    - Log graceful failure message with next_step information
+   - Set retry_failed to True
    - Set next_step to "finalizer"
    - Set final_answer to "The question could not be answered."
    - Set final_reasoning_trace to "The question could not be answered."
@@ -2919,29 +3202,25 @@ FUNCTION check_retry_limit(state: GraphState) -> GraphState
     - Should provide graceful degradation when limits are exceeded
     */
     
-    // Check if any agent has exceeded its retry limit:
-    // Compare planner_retry_count >= planner_retry_limit
-    planner_limit_exceeded ← state.retry_count["planner"] >= state.retry_limit["planner"]
-    
-    // Compare researcher_retry_count >= researcher_retry_limit
-    researcher_limit_exceeded ← state.retry_count["researcher"] >= state.retry_limit["researcher"]
-    
-    // Compare expert_retry_count >= expert_retry_limit
-    expert_limit_exceeded ← state.retry_count["expert"] >= state.retry_limit["expert"]
-    
-    // If any retry limit is exceeded:
-    IF planner_limit_exceeded OR researcher_limit_exceeded OR expert_limit_exceeded THEN
-        // Log graceful failure message with next_step information
-        LOG_INFO(f"Retry limit exceeded. Routing to finalizer. Next step: {state.next_step}")
+    // Check if any agent has exceeded its retry limit using a single if statement with or conditions
+    IF (state["planner_retry_count"] >= state["planner_retry_limit"] 
+        OR state["researcher_retry_count"] >= state["researcher_retry_limit"] 
+        OR state["expert_retry_count"] >= state["expert_retry_limit"]) THEN
+        
+        // Log the failure with next_step information
+        LOG_INFO(f"Graceful Failure: Retry limit exceeded for {state['next_step']}")
+        
+        // Set retry_failed to True
+        state["retry_failed"] = True
         
         // Set next_step to "finalizer"
-        state.next_step ← "finalizer"
+        state["next_step"] = "finalizer"
         
         // Set final_answer to "The question could not be answered."
-        state.final_answer ← "The question could not be answered."
+        state["final_answer"] = "The question could not be answered."
         
         // Set final_reasoning_trace to "The question could not be answered."
-        state.final_reasoning_trace ← "The question could not be answered."
+        state["final_reasoning_trace"] = "The question could not be answered."
     END IF
     
     // Return the updated state
@@ -2952,7 +3231,7 @@ END FUNCTION
 
 **Workflow Control**: Controls workflow termination by checking retry limits and routing to finalizer when limits are exceeded.
 
-**State Management**: Reads retry counts and retry limits from state. Updates next_step, final_answer, and final_reasoning_trace in state when limits are exceeded.
+**State Management**: Reads retry counts and retry limits from state. Updates retry_failed, next_step, final_answer, and final_reasoning_trace in state when limits are exceeded.
 
 **Communication Patterns**: None. This component does not communicate, rather it checks retry limits
 
@@ -2965,7 +3244,7 @@ END FUNCTION
 **Decorators**: None
 
 **Logging**:
-- Append logging (INFO) when retry limit is exceeded with graceful failure message
+- Logs INFO level message when retry limit is exceeded with format: "Graceful Failure: Retry limit exceeded for {next_step}"
 
 **Error Handling**:
 - None. All errors and exceptions will be uncaught and bubble up the call stack.
@@ -2998,10 +3277,17 @@ END FUNCTION
 **Direct Dependencies with Other Components**:
 - compose_agent_message function
 - send_message function
+- orchestrator_msg_to_critic_planner message template
+- orchestrator_msg_to_critic_planner_with_file message template
+- orchestrator_msg_to_critic_researcher message template
+- orchestrator_msg_to_expert message template
+- orchestrator_msg_to_critic_expert message template
+- orchestrator_msg_to_finalizer message template
+- orchestrator_msg_to_finalizer_retry_failed message template
 
 **Internal Logic**:
 1. Set state["current_step"] to state["next_step"] value
-2. Check if current_step equals "planner"
+2. Use elif control structure to check current_step values
 3. If current_step is "planner":
    - Check if critic_planner_decision equals "reject"
    - If critic_planner_decision is "reject":
@@ -3011,54 +3297,42 @@ END FUNCTION
      - Check if state["file"] exists
      - If file exists, set file_info to "\n\nInclude using following file in any of the research steps:" + "\n".join(state["file"])
      - Create initial planning message using compose_agent_message with sender="orchestrator", receiver="planner", type="instruction", and content formatted as "Develop a logical plan to answer the following question:\n{state['question']}{file_info}"
-4. Check if current_step equals "critic_planner"
-5. If current_step is "critic_planner":
-   - Build task context string formatted as "Use the following context to answer the User Question:\n\n## Context\n### Planner Task\nThe planner was asked to develop a logical plan to answer the following input question: {state['question']}\n\n"
-   - Initialize file_info as empty string
+4. If current_step is "critic_planner":
    - Check if state["file"] exists
-   - If file exists, append file_info formatted as "\n\nThe following file must be used in reference to answer the question:\n {state["file"]}"
-   - Build research_steps string formatted as "### Planner's Plan\nThe planner determined the following research steps were needed to answer the question: {state['research_steps']}"
-   - Build expert_steps string formatted as "\nThe planner determined the following expert steps were needed to answer the question: {state['expert_steps']}\n\n"
-   - Build user_question string formatted as "## User Question:\nDoes the planner's plan have the correct and logical research and expert steps needed to answer the input question? If yes, approve. If no, reject."
-   - Create critic message using compose_agent_message with sender="orchestrator", receiver="critic_planner", type="instruction", and content combining task + research_steps + expert_steps + user_question
-6. Check if current_step equals "researcher"
-7. If current_step is "researcher":
+   - If file exists, use orchestrator_msg_to_critic_planner_with_file template with question, file, research_steps, and expert_steps parameters
+   - If file does not exist, use orchestrator_msg_to_critic_planner template with question, research_steps, and expert_steps parameters
+   - Create critic message using compose_agent_message with sender="orchestrator", receiver="critic_planner", type="instruction", and content from template
+5. If current_step is "researcher":
    - Check if critic_researcher_decision equals "reject"
    - If critic_researcher_decision is "reject":
      - Create retry message using compose_agent_message with sender="orchestrator", receiver="researcher", type="instruction", content formatted as "Use the following feedback to improve the research:\n{state["critic_researcher_feedback"]}", and step_id=state["current_research_index"]
    - If critic_researcher_decision is not "reject":
      - Increment state["current_research_index"] by 1
      - Create research instruction message using compose_agent_message with sender="orchestrator", receiver="researcher", type="instruction", content formatted as "Research the following topic or question: {state['research_steps'][state['current_research_index']]}", and step_id=state["current_research_index"]
-8. Check if current_step equals "critic_researcher"
-9. If current_step is "critic_researcher":
-   - Build topic context string formatted as "Use the following context to answer the User Question:\n\n## Context\n### Research Topic\nThe researcher was asked to research the following topic: {state['research_steps'][state['current_research_index']]}\n\n"
-   - Build results string formatted as "### Research Results\nThe researcher's results are: {state['research_results'][state['current_research_index']]}\n\n"
-   - Build user_question string formatted as "## User Question:\nDoes the researcher's results contain sufficient information on the topic? If yes, approve. If no, reject."
-   - Create critic message using compose_agent_message with sender="orchestrator", receiver="critic_researcher", type="instruction", and content combining topic + results + user_question
-10. Check if current_step equals "expert"
-11. If current_step is "expert":
-    - Check if critic_expert_decision equals "reject"
-    - If critic_expert_decision is "reject":
-      - Create retry message using compose_agent_message with sender="orchestrator", receiver="expert", type="instruction", and content formatted as "Use the following feedback to improve your answer:\n{state["critic_expert_feedback"]}"
-    - If critic_expert_decision is not "reject":
-      - Build context string formatted as "Use the following context and recommended instructions to answer the question:\n ## Context:\n{state['research_results']}\n\n"
-      - Build expert_steps string formatted as "## Recommended Instructions:\nIt was recommended to perform the following steps to answer the question:\n{state['expert_steps']}\n\n"
-      - Build user_question string formatted as "## The Question:\nAnswer the question: {state['question']}"
-      - Create expert instruction message using compose_agent_message with sender="orchestrator", receiver="expert", type="instruction", and content combining context + expert_steps + user_question
-12. Check if current_step equals "critic_expert"
-13. If current_step is "critic_expert":
-    - Build question context string formatted as "Use the following context answer the User Question:\n ## Context:\n\n### Expert Question:\n The expert was asked to answer the following question: {state['question']}\n\n"
-    - Build context string formatted as "### Researched Information:\nThe expert had the following researched information to use to answer the question:\n{state["research_results"]}\n\n"
-    - Build expert_answer string formatted as "## Expert Answer:\nThe expert gave the following response and reasoning:\nExpert answer: {state['expert_answer']}\nExpert reasoning: {state['expert_reasoning']}\n\n"
-    - Build user_question string formatted as "## User Question:\nDoes the expert's answer actually answer the question to a satisfactory level? If yes, approve. If no, reject."
-    - Create critic message using compose_agent_message with sender="orchestrator", receiver="critic_expert", type="instruction", and content combining question + context + expert_answer + user_question
-14. Check if current_step equals "finalizer"
-15. If current_step is "finalizer":
-    - Create finalizer instruction message using compose_agent_message with sender="orchestrator", receiver="finalizer", type="instruction", and content formatted as "Generate the final answer and reasoning trace (logical steps) to answer the question."
-16. If current_step is invalid (not matching any condition):
+6. If current_step is "critic_researcher":
+   - Use orchestrator_msg_to_critic_researcher template with research_topic and research_results parameters
+   - Create critic message using compose_agent_message with sender="orchestrator", receiver="critic_researcher", type="instruction", and content from template
+7. If current_step is "expert":
+   - Check if critic_expert_decision equals "reject"
+   - If critic_expert_decision is "reject":
+     - Create retry message using compose_agent_message with sender="orchestrator", receiver="expert", type="instruction", and content formatted as "Use the following feedback to improve your answer:\n{state["critic_expert_feedback"]}"
+   - If critic_expert_decision is not "reject":
+     - Use orchestrator_msg_to_expert template with research_results, expert_steps, and question parameters
+     - Create expert instruction message using compose_agent_message with sender="orchestrator", receiver="expert", type="instruction", and content from template
+8. If current_step is "critic_expert":
+   - Use orchestrator_msg_to_critic_expert template with question, research_results, expert_answer, and expert_reasoning parameters
+   - Create critic message using compose_agent_message with sender="orchestrator", receiver="critic_expert", type="instruction", and content from template
+9. If current_step is "finalizer":
+   - Check if state["retry_failed"] is True
+   - If retry_failed is True:
+     - Use orchestrator_msg_to_finalizer_retry_failed template
+   - If retry_failed is False:
+     - Use orchestrator_msg_to_finalizer template with question, research_steps, expert_steps, expert_answer, and expert_reasoning parameters
+   - Create finalizer instruction message using compose_agent_message with sender="orchestrator", receiver="finalizer", type="instruction", and content from template
+10. If current_step is invalid (not matching any condition):
     - Raise ValueError with message formatted as "Invalid current step: {state['current_step']}"
-17. Send the composed message using send_message function with state and message parameters
-18. Return the updated state
+11. Send the composed message using send_message function with state and message parameters
+12. Return the updated state
 
 **Pseudocode**:
 ```
@@ -3085,193 +3359,128 @@ FUNCTION execute_next_step(state: GraphState) -> GraphState
     */
     
     // Set state["current_step"] to state["next_step"] value
-    state.current_step ← state.next_step
+    state["current_step"] = state["next_step"]
     
-    // Check if current_step equals "planner"
-    IF state.current_step = "planner" THEN
-        // Check if critic_planner_decision equals "reject"
-        IF state.critic_planner_decision = "reject" THEN
-            // Create retry message using compose_agent_message
-            message ← compose_agent_message(
-                sender="orchestrator",
-                receiver="planner",
-                type="instruction",
-                content=f"Use the following feedback to improve the plan:\n{state.critic_planner_feedback}"
+    // Send appropriate message based on the current step
+    IF state["current_step"] = "planner" THEN
+        IF state["critic_planner_decision"] = "reject" THEN
+            // Retry with feedback
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "planner",
+                type= "instruction",
+                content= f"Use the following feedback to improve the plan:\n{state['critic_planner_feedback']}",
             )
         ELSE
-            // Initialize file_info as empty string
-            file_info ← ""
-            
-            // Check if state["file"] exists
-            IF state.file_path IS NOT none THEN
-                // If file exists, set file_info
-                file_info ← f"\n\nInclude using following file in any of the research steps:\n{state.file_path}"
+            // Initial planning request
+            file_info = ""
+            IF state["file"] THEN
+                file_info = "\n\nInclude using following file in any of the research steps:" + "\n".join(state["file"])
             END IF
             
-            // Create initial planning message using compose_agent_message
-            message ← compose_agent_message(
-                sender="orchestrator",
-                receiver="planner",
-                type="instruction",
-                content=f"Develop a logical plan to answer the following question:\n{state.question}{file_info}"
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "planner",
+                type= "instruction",
+                content= f"Develop a logical plan to answer the following question:\n{state['question']}{file_info}",
             )
         END IF
-    END IF
     
-    // Check if current_step equals "critic_planner"
-    IF state.current_step = "critic_planner" THEN
-        // Build task context string
-        task_context ← f"Use the following context to answer the User Question:\n\n## Context\n### Planner Task\nThe planner was asked to develop a logical plan to answer the following input question: {state.question}\n\n"
-        
-        // Initialize file_info as empty string
-        file_info ← ""
-        
-        // Check if state["file"] exists
-        IF state.file_path IS NOT none THEN
-            // If file exists, append file_info
-            file_info ← f"\n\nThe following file must be used in reference to answer the question:\n{state.file_path}"
+    ELSE IF state["current_step"] = "critic_planner" THEN
+        // Add context to the last message to the critic
+        IF state["file"] THEN
+            content = orchestrator_msg_to_critic_planner_with_file.format(question=state["question"], file=state["file"], research_steps=state["research_steps"], expert_steps=state["expert_steps"])
+        ELSE
+            content = orchestrator_msg_to_critic_planner.format(question=state["question"], research_steps=state["research_steps"], expert_steps=state["expert_steps"])
         END IF
         
-        // Build research_steps string
-        research_steps ← f"### Planner's Plan\nThe planner determined the following research steps were needed to answer the question: {state.research_steps}"
-        
-        // Build expert_steps string
-        expert_steps ← f"\nThe planner determined the following expert steps were needed to answer the question: {state.expert_steps}\n\n"
-        
-        // Build user_question string
-        user_question ← "## User Question:\nDoes the planner's plan have the correct and logical research and expert steps needed to answer the input question? If yes, approve. If no, reject."
-        
-        // Create critic message using compose_agent_message
-        message ← compose_agent_message(
-            sender="orchestrator",
-            receiver="critic_planner",
-            type="instruction",
-            content=task_context + research_steps + expert_steps + user_question
+        message = compose_agent_message(
+            sender= "orchestrator",
+            receiver= "critic_planner",
+            type= "instruction",
+            content= content,
         )
-    END IF
     
-    // Check if current_step equals "researcher"
-    IF state.current_step = "researcher" THEN
-        // Check if critic_researcher_decision equals "reject"
-        IF state.critic_researcher_decision = "reject" THEN
-            // Create retry message using compose_agent_message
-            message ← compose_agent_message(
-                sender="orchestrator",
-                receiver="researcher",
-                type="instruction",
-                content=f"Use the following feedback to improve the research:\n{state.critic_researcher_feedback}",
-                step_id=state.current_research_index
+    ELSE IF state["current_step"] = "researcher" THEN
+        IF state["critic_researcher_decision"] = "reject" THEN
+            // Retry with feedback
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "researcher",
+                type= "instruction",
+                content= f"Use the following feedback to improve the research:\n{state["critic_researcher_feedback"]}",
+                step_id=state["current_research_index"],
             )
         ELSE
-            // Increment state["current_research_index"] by 1
-            state.current_research_index ← state.current_research_index + 1
+            // Increment research index for new step
+            state["current_research_index"] += 1
             
-            // Create research instruction message using compose_agent_message
-            message ← compose_agent_message(
-                sender="orchestrator",
-                receiver="researcher",
-                type="instruction",
-                content=f"Research the following topic or question: {state.research_steps[state.current_research_index]}",
-                step_id=state.current_research_index
-            )
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "researcher",
+                type= "instruction",
+                content= f"Research the following topic or question: {state['research_steps'][state['current_research_index']]}",
+                step_id= state["current_research_index"],
+            )   
         END IF
-    END IF
     
-    // Check if current_step equals "critic_researcher"
-    IF state.current_step = "critic_researcher" THEN
-        // Build topic context string
-        topic_context ← f"Use the following context to answer the User Question:\n\n## Context\n### Research Topic\nThe researcher was asked to research the following topic: {state.research_steps[state.current_research_index]}\n\n"
-        
-        // Build results string
-        results ← f"### Research Results\nThe researcher's results are: {state.research_results[state.current_research_index]}\n\n"
-        
-        // Build user_question string
-        user_question ← "## User Question:\nDoes the researcher's results contain sufficient information on the topic? If yes, approve. If no, reject."
-        
-        // Create critic message using compose_agent_message
-        message ← compose_agent_message(
-            sender="orchestrator",
-            receiver="critic_researcher",
-            type="instruction",
-            content=topic_context + results + user_question
+    ELSE IF state["current_step"] = "critic_researcher" THEN
+        message = compose_agent_message(
+            sender= "orchestrator",
+            receiver= "critic_researcher",
+            type= "instruction",
+            content= orchestrator_msg_to_critic_researcher.format(research_topic=state["research_steps"][state["current_research_index"]], research_results=state["research_results"][state["current_research_index"]]),
         )
-    END IF
     
-    // Check if current_step equals "expert"
-    IF state.current_step = "expert" THEN
-        // Check if critic_expert_decision equals "reject"
-        IF state.critic_expert_decision = "reject" THEN
-            // Create retry message using compose_agent_message
-            message ← compose_agent_message(
-                sender="orchestrator",
-                receiver="expert",
-                type="instruction",
-                content=f"Use the following feedback to improve your answer:\n{state.critic_expert_feedback}"
+    ELSE IF state["current_step"] = "expert" THEN
+        IF state["critic_expert_decision"] = "reject" THEN
+            // Retry with feedback
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "expert",
+                type= "instruction",
+                content= f"Use the following feedback to improve your answer:\n{state["critic_expert_feedback"]}",
             )
         ELSE
-            // Build context string
-            context ← f"Use the following context and recommended instructions to answer the question:\n ## Context:\n{state.research_results}\n\n"
-            
-            // Build expert_steps string
-            expert_steps ← f"## Recommended Instructions:\nIt was recommended to perform the following steps to answer the question:\n{state.expert_steps}\n\n"
-            
-            // Build user_question string
-            user_question ← f"## The Question:\nAnswer the question: {state.question}"
-            
-            // Create expert instruction message using compose_agent_message
-            message ← compose_agent_message(
-                sender="orchestrator",
-                receiver="expert",
-                type="instruction",
-                content=context + expert_steps + user_question
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "expert",
+                type= "instruction",
+                content= orchestrator_msg_to_expert.format(research_results=state["research_results"], expert_steps=state["expert_steps"], question=state["question"]),
             )
         END IF
-    END IF
     
-    // Check if current_step equals "critic_expert"
-    IF state.current_step = "critic_expert" THEN
-        // Build question context string
-        question_context ← f"Use the following context answer the User Question:\n ## Context:\n\n### Expert Question:\n The expert was asked to answer the following question: {state.question}\n\n"
-        
-        // Build context string
-        context ← f"### Researched Information:\nThe expert had the following researched information to use to answer the question:\n{state.research_results}\n\n"
-        
-        // Build expert_answer string
-        expert_answer ← f"## Expert Answer:\nThe expert gave the following response and reasoning:\nExpert answer: {state.expert_answer}\nExpert reasoning: {state.expert_reasoning}\n\n"
-        
-        // Build user_question string
-        user_question ← "## User Question:\nDoes the expert's answer actually answer the question to a satisfactory level? If yes, approve. If no, reject."
-        
-        // Create critic message using compose_agent_message
-        message ← compose_agent_message(
-            sender="orchestrator",
-            receiver="critic_expert",
-            type="instruction",
-            content=question_context + context + expert_answer + user_question
+    ELSE IF state["current_step"] = "critic_expert" THEN
+        message = compose_agent_message(
+            sender= "orchestrator",
+            receiver= "critic_expert",
+            type= "instruction",
+            content= orchestrator_msg_to_critic_expert.format(question=state["question"], research_results=state["research_results"], expert_answer=state["expert_answer"], expert_reasoning=state["expert_reasoning"]),
         )
+    
+    ELSE IF state["current_step"] = "finalizer" THEN
+        IF state["retry_failed"] THEN
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "finalizer",
+                type= "instruction",
+                content= orchestrator_msg_to_finalizer_retry_failed,
+            )
+        ELSE
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "finalizer",
+                type= "instruction",
+                content= orchestrator_msg_to_finalizer.format(question=state["question"], research_steps=state["research_steps"], expert_steps=state["expert_steps"], expert_answer=state["expert_answer"], expert_reasoning=state["expert_reasoning"]),
+            )
+        END IF
+    
+    ELSE
+        RAISE ValueError(f"Invalid current step: {state['current_step']}")
     END IF
     
-    // Check if current_step equals "finalizer"
-    IF state.current_step = "finalizer" THEN
-        // Create finalizer instruction message using compose_agent_message
-        message ← compose_agent_message(
-            sender="orchestrator",
-            receiver="finalizer",
-            type="instruction",
-            content="Generate the final answer and reasoning trace (logical steps) to answer the question."
-        )
-    END IF
-    
-    // If current_step is invalid (not matching any condition):
-    IF message IS NOT DEFINED THEN
-        // Raise ValueError with message
-        RAISE ValueError(f"Invalid current step: {state.current_step}")
-    END IF
-    
-    // Send the composed message using send_message function
-    state ← send_message(state, message)
-    
-    // Return the updated state
+    // Send the message
+    send_message(state, message)
     RETURN state
     
 END FUNCTION
@@ -3332,11 +3541,11 @@ END FUNCTION
 - execute_next_step function
 
 **Internal Logic**:
-1. Log the beginning of orchestrator execution with current step
+1. Log the beginning of orchestrator execution with current step using safe state access
 2. Call determine_next_step function to determine next step
 3. Call check_retry_limit function to check retry limits
 4. Call execute_next_step function to execute the next step
-5. Log successful completion with next step
+5. Log successful completion with next step using safe state access
 6. Return the updated state
 
 **Pseudocode**:
@@ -3364,20 +3573,20 @@ FUNCTION orchestrator(state: GraphState) -> GraphState
     - Should manage workflow state and progression
     */
     
-    // Log the beginning of orchestrator execution with current step
-    LOG_INFO(f"Starting orchestrator execution. Current step: {state.current_step}")
+    // Log the beginning of orchestrator execution with current step using safe state access
+    LOG_INFO(f"Orchestrator starting execution. Current step: {state.get('current_step', 'unknown')}")
     
     // Call determine_next_step function to determine next step
-    state ← determine_next_step(state)
+    state = determine_next_step(state)
     
     // Call check_retry_limit function to check retry limits
-    state ← check_retry_limit(state)
+    state = check_retry_limit(state)
     
     // Call execute_next_step function to execute the next step
-    state ← execute_next_step(state)
+    state = execute_next_step(state)
     
-    // Log successful completion with next step
-    LOG_INFO(f"Orchestrator execution completed successfully. Next step: {state.next_step}")
+    // Log successful completion with next step using safe state access
+    LOG_INFO(f"Orchestrator completed successfully. Next step: {state.get('next_step', 'unknown')}")
     
     // Return the updated state
     RETURN state
@@ -3399,7 +3608,8 @@ END FUNCTION
 
 **Closed-over variables**: None
 
-**Decorators**: None
+**Decorators**: 
+- @track: Opik tracking decorator for observability and tracing
 
 **Logging**:
 - Append logging (INFO) at the beginning of execution with current step
@@ -3435,21 +3645,21 @@ END FUNCTION
 **Direct Dependencies with Other Components**: None
 
 **Internal Logic**:
-1. Check if current_step is "planner"
+1. Check if current_step is "planner" using dictionary access
 2. If planner, return "planner"
-3. Check if current_step is "researcher"
+3. Check if current_step is "researcher" using elif
 4. If researcher, return "researcher"
-5. Check if current_step is "expert"
+5. Check if current_step is "expert" using elif
 6. If expert, return "expert"
-7. Check if current_step is "critic_planner"
+7. Check if current_step is "critic_planner" using elif
 8. If critic_planner, return "critic"
-9. Check if current_step is "critic_researcher"
+9. Check if current_step is "critic_researcher" using elif
 10. If critic_researcher, return "critic"
-11. Check if current_step is "critic_expert"
+11. Check if current_step is "critic_expert" using elif
 12. If critic_expert, return "critic"
-13. Check if current_step is "finalizer"
+13. Check if current_step is "finalizer" using elif
 14. If finalizer, return "finalizer"
-15. If current_step is invalid, raise ValueError with error message
+15. If current_step is invalid, raise ValueError with error message using dictionary access
 
 **Pseudocode**:
 ```
@@ -3470,50 +3680,38 @@ FUNCTION route_from_orchestrator(state: GraphState) -> str
     - Should validate current_step and raise error for invalid steps
     */
     
-    // Check if current_step is "planner"
-    IF state.current_step = "planner" THEN
+    // Check if current_step is "planner" using dictionary access
+    IF state["current_step"] = "planner" THEN
         // If planner, return "planner"
         RETURN "planner"
-    END IF
-    
-    // Check if current_step is "researcher"
-    IF state.current_step = "researcher" THEN
+    // Check if current_step is "researcher" using elif
+    ELSE IF state["current_step"] = "researcher" THEN
         // If researcher, return "researcher"
         RETURN "researcher"
-    END IF
-    
-    // Check if current_step is "expert"
-    IF state.current_step = "expert" THEN
+    // Check if current_step is "expert" using elif
+    ELSE IF state["current_step"] = "expert" THEN
         // If expert, return "expert"
         RETURN "expert"
-    END IF
-    
-    // Check if current_step is "critic_planner"
-    IF state.current_step = "critic_planner" THEN
+    // Check if current_step is "critic_planner" using elif
+    ELSE IF state["current_step"] = "critic_planner" THEN
         // If critic_planner, return "critic"
         RETURN "critic"
-    END IF
-    
-    // Check if current_step is "critic_researcher"
-    IF state.current_step = "critic_researcher" THEN
+    // Check if current_step is "critic_researcher" using elif
+    ELSE IF state["current_step"] = "critic_researcher" THEN
         // If critic_researcher, return "critic"
         RETURN "critic"
-    END IF
-    
-    // Check if current_step is "critic_expert"
-    IF state.current_step = "critic_expert" THEN
+    // Check if current_step is "critic_expert" using elif
+    ELSE IF state["current_step"] = "critic_expert" THEN
         // If critic_expert, return "critic"
         RETURN "critic"
-    END IF
-    
-    // Check if current_step is "finalizer"
-    IF state.current_step = "finalizer" THEN
+    // Check if current_step is "finalizer" using elif
+    ELSE IF state["current_step"] = "finalizer" THEN
         // If finalizer, return "finalizer"
         RETURN "finalizer"
+    ELSE
+        // If current_step is invalid, raise ValueError with error message using dictionary access
+        RAISE ValueError(f"Invalid current step: {state['current_step']}")
     END IF
-    
-    // If current_step is invalid, raise ValueError with error message
-    RAISE ValueError(f"Invalid current step: {state.current_step}")
     
 END FUNCTION
 ```
@@ -3576,15 +3774,15 @@ END FUNCTION
 **Internal Logic**:
 1. Define inner function planner_agent that takes GraphState as parameter
 2. Log the beginning of planner execution
-3. Create system prompt using SystemMessage with config.system_prompt content
+3. Create system prompt as list containing SystemMessage with config.system_prompt content
 4. Get agent conversation history using get_agent_conversation function
 5. Convert agent messages to LangChain format using convert_agent_messages_to_langchain function
 6. Invoke LLM with system prompt concatenated with message history
-7. Validate response using validate_llm_response function
-8. Update state["research_steps"] with response["research_steps"]
-9. Update state["expert_steps"] with response["expert_steps"]
-10. Compose agent message using compose_agent_message function with sender="planner", receiver="orchestrator", type="response", and content containing research steps and expert steps
-11. Send message using send_message function
+7. Validate response using validate_llm_response function with config.output_schema.keys() and "planner" component name
+8. Update state["research_steps"] with response["research_steps"] using dictionary assignment
+9. Update state["expert_steps"] with response["expert_steps"] using dictionary assignment
+10. Compose agent message using compose_agent_message function with sender="planner", receiver="orchestrator", type="response", and formatted content string containing research steps and expert steps
+11. Send message using send_message function and assign returned state
 12. Log successful completion
 13. Return the updated state
 14. Return the inner planner_agent function
@@ -3631,37 +3829,37 @@ FUNCTION create_planner_agent(config: AgentConfig, llm_planner: ChatOpenAI) -> C
         // Log the beginning of planner execution
         LOG_INFO("Planner starting execution")
         
-        // Create system prompt using SystemMessage with config.system_prompt content
-        system_prompt = SystemMessage(content=config.system_prompt)
+        // Create system prompt as list containing SystemMessage with config.system_prompt content
+        sys_prompt = [SystemMessage(content=config.system_prompt)]
         
         // Get agent conversation history using get_agent_conversation function
-        conversation_history = get_agent_conversation(state, "planner")
+        message_history = get_agent_conversation(state, "planner")
         
         // Convert agent messages to LangChain format using convert_agent_messages_to_langchain function
-        langchain_messages = convert_agent_messages_to_langchain(conversation_history)
+        message_in = convert_agent_messages_to_langchain(message_history)
         
         // Invoke LLM with system prompt concatenated with message history
-        messages = [system_prompt] + langchain_messages
-        response = llm_planner.invoke(messages)
+        response = llm_planner.invoke(sys_prompt + message_in)
         
-        // Validate response using validate_llm_response function
-        validated_response = validate_llm_response(response, config.output_schemas)
+        // Validate response using validate_llm_response function with config.output_schema.keys() and "planner" component name
+        response = validate_llm_response(response, config.output_schema.keys(), "planner")
         
-        // Update state["research_steps"] with response["research_steps"]
-        state.research_steps = validated_response["research_steps"]
+        // Update state["research_steps"] with response["research_steps"] using dictionary assignment
+        state["research_steps"] = response["research_steps"]
         
-        // Update state["expert_steps"] with response["expert_steps"]
-        state.expert_steps = validated_response["expert_steps"]
+        // Update state["expert_steps"] with response["expert_steps"] using dictionary assignment
+        state["expert_steps"] = response["expert_steps"]
         
-        // Compose agent message using compose_agent_message function with sender="planner", receiver="orchestrator", type="response", and content containing research steps and expert steps
-        message_content = {
-            "research_steps": validated_response["research_steps"],
-            "expert_steps": validated_response["expert_steps"]
-        }
-        agent_message = compose_agent_message("planner", "orchestrator", "response", message_content)
+        // Compose agent message using compose_agent_message function with sender="planner", receiver="orchestrator", type="response", and formatted content string containing research steps and expert steps
+        agent_message = compose_agent_message(
+            sender= "planner",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Planner complete. Research steps: {response['research_steps']}, Expert steps: {response['expert_steps']}",   
+        )
         
-        // Send message using send_message function
-        send_message(state, agent_message)
+        // Send message using send_message function and assign returned state
+        state = send_message(state, agent_message)
         
         // Log successful completion
         LOG_INFO("Planner completed successfully")
@@ -3740,7 +3938,7 @@ END FUNCTION
 **Internal Logic**:
 1. Define inner function researcher_agent that takes GraphState as parameter
 2. Log the beginning of researcher execution
-3. Get current research index from state
+3. Get current research index from state using dictionary access
 4. Get agent conversation history using get_agent_conversation function with step_id = current research index
 5. Convert agent messages to LangChain format using convert_agent_messages_to_langchain function
 6. Check if ResearcherState exists for current index
@@ -3748,16 +3946,16 @@ END FUNCTION
    - Create new ResearcherState with messages, step_index, and result=None
 8. If ResearcherState exists:
    - Get existing ResearcherState from state
-   - Append latest message to ResearcherState messages
+   - Append only the latest message to ResearcherState messages
 9. Execute research using compiled_researcher_graph.invoke with ResearcherState
-10. Validate response using validate_llm_response function
-11. Store response result in ResearcherState
-12. Update ResearcherState in state
+10. Validate response using validate_llm_response function with researcher_state["messages"][-1].content, config.output_schema.keys(), and step-specific component name
+11. Store response result in ResearcherState using dictionary access
+12. Update ResearcherState in state using dictionary assignment
 13. Store research results in state:
     - If research_results list length <= current index, append result
     - Otherwise, update result at current index
-14. Compose agent message using compose_agent_message function with sender="researcher", receiver="orchestrator", type="response", step_id=current_research_index, and content containing research completion status
-15. Send message using send_message function
+14. Compose agent message using compose_agent_message function with sender="researcher", receiver="orchestrator", type="response", step_id=current_research_index, and formatted content string containing research completion status
+15. Send message using send_message function and assign returned state
 16. Log successful completion
 17. Return the updated state
 18. Return the inner researcher_agent function
@@ -3801,63 +3999,64 @@ FUNCTION create_researcher_agent(config: AgentConfig, compiled_researcher_graph:
         // Log the beginning of researcher execution
         LOG_INFO("Researcher starting execution")
         
-        // Get current research index from state
-        current_research_index = state.current_research_step_id
+        // Get current research index from state using dictionary access
+        idx = state["current_research_index"]
         
         // Get agent conversation history using get_agent_conversation function with step_id = current research index
-        conversation_history = get_agent_conversation(state, "researcher", current_research_index)
+        message_history = get_agent_conversation(state, "researcher", step_id=idx)
         
         // Convert agent messages to LangChain format using convert_agent_messages_to_langchain function
-        langchain_messages = convert_agent_messages_to_langchain(conversation_history)
+        message_in = convert_agent_messages_to_langchain(message_history)
         
-        // Check if ResearcherState exists for current index
-        IF current_research_index NOT IN state.researcher_states THEN
+        // Get or create ResearcherState for this step
+        IF idx NOT IN state["researcher_states"] THEN
             // If ResearcherState doesn't exist:
             // Create new ResearcherState with messages, step_index, and result=None
             researcher_state = ResearcherState(
-                messages=langchain_messages,
-                step_id=current_research_index,
-                results=None
+                messages=message_in,
+                step_index=idx,
+                result=None
             )
         ELSE
             // If ResearcherState exists:
             // Get existing ResearcherState from state
-            researcher_state = state.researcher_states[current_research_index]
-            // Append latest message to ResearcherState messages
-            researcher_state.messages = researcher_state.messages + langchain_messages
+            researcher_state = state["researcher_states"][idx]
+            // Append only the latest message to ResearcherState messages
+            researcher_state["messages"].append(message_in[-1])
         END IF
         
         // Execute research using compiled_researcher_graph.invoke with ResearcherState
-        response = compiled_researcher_graph.invoke(researcher_state)
+        researcher_state = compiled_researcher_graph.invoke(researcher_state)
         
-        // Validate response using validate_llm_response function
-        validated_response = validate_llm_response(response, config.output_schemas)
+        // Validate response using validate_llm_response function with researcher_state["messages"][-1].content, config.output_schema.keys(), and step-specific component name
+        response = validate_llm_response(researcher_state["messages"][-1].content, config.output_schema.keys(), f"researcher step {state['current_research_index']}")
         
-        // Store response result in ResearcherState
-        researcher_state.results = validated_response["results"]
+        // Store response in ResearcherState in case of text JSON response
+        researcher_state["result"] = response["result"]
         
-        // Update ResearcherState in state
-        state.researcher_states[current_research_index] = researcher_state
+        // Update ResearcherState in state using dictionary assignment
+        state["researcher_states"][idx] = researcher_state
         
         // Store research results in state:
-        IF LENGTH(state.research_results) <= current_research_index THEN
+        IF LENGTH(state["research_results"]) <= idx THEN
             // If research_results list length <= current index, append result
-            state.research_results.append(validated_response["results"])
+            state["research_results"].append(response["result"])
         ELSE
             // Otherwise, update result at current index
-            state.research_results[current_research_index] = validated_response["results"]
+            state["research_results"][idx] = response["result"]
         END IF
         
-        // Compose agent message using compose_agent_message function with sender="researcher", receiver="orchestrator", type="response", step_id=current_research_index, and content containing research completion status
-        message_content = {
-            "research_completed": True,
-            "step_id": current_research_index,
-            "results": validated_response["results"]
-        }
-        agent_message = compose_agent_message("researcher", "orchestrator", "response", message_content, current_research_index)
+        // Send response to orchestrator
+        agent_message = compose_agent_message(
+            sender= "researcher",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Researcher complete for step {state['current_research_index']}",
+            step_id= state["current_research_index"],
+        )
         
-        // Send message using send_message function
-        send_message(state, agent_message)
+        // Send message using send_message function and assign returned state
+        state = send_message(state, agent_message)
         
         // Log successful completion
         LOG_INFO("Researcher completed successfully")
@@ -3935,20 +4134,20 @@ END FUNCTION
 1. Define inner function expert_agent that takes GraphState as parameter
 2. Log the beginning of expert execution
 3. Get agent conversation history using get_agent_conversation function
-4. Convert agent messages to LangChain format and take only the last message
-5. Get expert_state from state
+4. Convert agent messages to LangChain format and take only the last message as a list
+5. Get expert_state from state using dictionary access
 6. Check if expert_state is None
 7. If expert_state is None:
    - Create new ExpertState with messages, question, research_steps, research_results, and empty expert fields
 8. If expert_state exists:
-   - Extend expert_state messages with new message_in
+   - Extend expert_state messages with new message_in using extend method
 9. Execute expert reasoning using compiled_expert_graph.invoke with expert_state
-10. Validate response using validate_llm_response function
-11. Store response expert_answer and expert_reasoning in expert_state
-12. Update expert_state in state
-13. Store expert_answer and expert_reasoning in state
-14. Compose agent message using compose_agent_message function with sender="expert", receiver="orchestrator", type="response", and content containing expert answer and reasoning
-15. Send message using send_message function
+10. Validate response using validate_llm_response function with expert_state["messages"][-1].content, config.output_schema.keys(), and "expert" component name
+11. Store response expert_answer and expert_reasoning in expert_state using dictionary access
+12. Update expert_state in state using dictionary assignment
+13. Store expert_answer and expert_reasoning in state using dictionary assignment
+14. Compose agent message using compose_agent_message function with sender="expert", receiver="orchestrator", type="response", and formatted content string containing expert answer and reasoning
+15. Send message using send_message function and assign returned state
 16. Log successful completion
 17. Return the updated state
 18. Return the inner expert_agent function
@@ -3993,59 +4192,59 @@ FUNCTION create_expert_agent(config: AgentConfig, compiled_expert_graph: Callabl
         LOG_INFO("Expert starting execution")
         
         // Get agent conversation history using get_agent_conversation function
-        conversation_history = get_agent_conversation(state, "expert")
+        message_history = get_agent_conversation(state, "expert")
         
-        // Convert agent messages to LangChain format and take only the last message
-        langchain_messages = convert_agent_messages_to_langchain(conversation_history)
-        message_in = langchain_messages[-1]  // Take only the last message
+        // Convert agent messages to LangChain format and take only the last message as a list
+        message_in = [convert_agent_messages_to_langchain(message_history)[-1]]
         
-        // Get expert_state from state
-        expert_state = state.expert_state
+        // Get expert_state from state using dictionary access
+        expert_state = state["expert_state"]
         
         // Check if expert_state is None
         IF expert_state IS None THEN
             // If expert_state is None:
             // Create new ExpertState with messages, question, research_steps, research_results, and empty expert fields
             expert_state = ExpertState(
-                messages=[message_in],
-                question=state.question,
-                research_steps=state.research_steps,
-                research_results=state.research_results,
+                messages=message_in,
+                question=state["question"],
+                research_steps=state["research_steps"],
+                research_results=state["research_results"],
                 expert_answer="",
-                expert_reasoning=""
+                expert_reasoning="",
             )
         ELSE
             // If expert_state exists:
-            // Extend expert_state messages with new message_in
-            expert_state.messages = expert_state.messages + [message_in]
+            // Extend expert_state messages with new message_in using extend method
+            expert_state["messages"].extend(message_in)
         END IF
         
         // Execute expert reasoning using compiled_expert_graph.invoke with expert_state
-        response = compiled_expert_graph.invoke(expert_state)
+        expert_state = compiled_expert_graph.invoke(expert_state)
         
-        // Validate response using validate_llm_response function
-        validated_response = validate_llm_response(response, config.output_schemas)
+        // Validate response using validate_llm_response function with expert_state["messages"][-1].content, config.output_schema.keys(), and "expert" component name
+        response = validate_llm_response(expert_state["messages"][-1].content, config.output_schema.keys(), "expert")
         
-        // Store response expert_answer and expert_reasoning in expert_state
-        expert_state.expert_answer = validated_response["expert_answer"]
-        expert_state.expert_reasoning = validated_response["reasoning_trace"]
+        // Store response expert_answer and expert_reasoning in expert_state using dictionary access
+        expert_state["expert_answer"] = response["expert_answer"]
+        expert_state["expert_reasoning"] = response["reasoning_trace"]
         
-        // Update expert_state in state
-        state.expert_state = expert_state
+        // Update expert_state in state using dictionary assignment
+        state["expert_state"] = expert_state
         
-        // Store expert_answer and expert_reasoning in state
-        state.expert_answer = validated_response["expert_answer"]
-        state.expert_reasoning = validated_response["reasoning_trace"]
+        // Store expert_answer and expert_reasoning in state using dictionary assignment
+        state["expert_answer"] = response["expert_answer"]
+        state["expert_reasoning"] = response["reasoning_trace"]
         
-        // Compose agent message using compose_agent_message function with sender="expert", receiver="orchestrator", type="response", and content containing expert answer and reasoning
-        message_content = {
-            "expert_answer": validated_response["expert_answer"],
-            "expert_reasoning": validated_response["reasoning_trace"]
-        }
-        agent_message = compose_agent_message("expert", "orchestrator", "response", message_content)
+        // Compose agent message using compose_agent_message function with sender="expert", receiver="orchestrator", type="response", and formatted content string containing expert answer and reasoning
+        agent_message = compose_agent_message(
+            sender= "expert",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Expert complete. Answer: {expert_state['expert_answer']}, Reasoning: {expert_state['expert_reasoning']}",
+        )
         
-        // Send message using send_message function
-        send_message(state, agent_message)
+        // Send message using send_message function and assign returned state
+        state = send_message(state, agent_message)
         
         // Log successful completion
         LOG_INFO("Expert completed successfully")
@@ -4122,7 +4321,7 @@ END FUNCTION
 
 **Internal Logic**:
 1. Define inner function critic_agent that takes GraphState as parameter
-2. Log the beginning of critic execution
+2. Log the beginning of critic execution with current step information
 3. Determine which critic to run based on current_step
 4. If current_step is "critic_planner":
    - Get critic_prompt from config.system_prompt["critic_planner"]
@@ -4131,17 +4330,17 @@ END FUNCTION
 6. If current_step is "critic_expert":
    - Get critic_prompt from config.system_prompt["critic_expert"]
 7. If current_step is invalid, raise RuntimeError
-8. Create system prompt using SystemMessage with critic_prompt content
+8. Create system prompt as list containing SystemMessage with critic_prompt content
 9. Get agent conversation history using get_agent_conversation function with current_step
-10. Convert agent messages to LangChain format and take only the last message
+10. Convert agent messages to LangChain format and take only the last message as a list
 11. Invoke LLM with system prompt concatenated with message history
-12. Validate response using validate_llm_response function
+12. Validate response using validate_llm_response function with config.output_schema.keys() and "critic" component name
 13. Store critic decision and feedback based on current step:
     - If critic_planner: store in critic_planner_decision and critic_planner_feedback
     - If critic_researcher: store in critic_researcher_decision and critic_researcher_feedback
     - If critic_expert: store in critic_expert_decision and critic_expert_feedback
-14. Compose agent message using compose_agent_message function with sender="critic", receiver="orchestrator", type="response", and content containing decision and feedback
-15. Send message using send_message function
+14. Compose agent message using compose_agent_message function with sender="critic", receiver="orchestrator", type="response", and formatted content string containing decision and feedback
+15. Send message using send_message function and assign returned state
 16. Log successful completion
 17. Return the updated state
 18. Return the inner critic_agent function
@@ -4187,70 +4386,66 @@ FUNCTION create_critic_agent(config: AgentConfig, llm_critic: ChatOpenAI) -> Cal
     
     // Define inner function critic_agent that takes GraphState as parameter
     FUNCTION critic_agent(state: GraphState) -> GraphState
-        // Log the beginning of critic execution
-        LOG_INFO("Critic starting execution")
+        // Log the beginning of critic execution with current step information
+        LOG_INFO(f"Critic starting execution - {state['current_step']}")
         
-        // Determine which critic to run based on current_step
-        critic_type = state.current_step
-        
-        // If current_step is "critic_planner":
-        IF critic_type = "critic_planner" THEN
+        // Determine which critic to run and get the appropriate prompt
+        IF state["current_step"] = "critic_planner" THEN
             // Get critic_prompt from config.system_prompt["critic_planner"]
             critic_prompt = config.system_prompt["critic_planner"]
         // If current_step is "critic_researcher":
-        ELSE IF critic_type = "critic_researcher" THEN
+        ELSE IF state["current_step"] = "critic_researcher" THEN
             // Get critic_prompt from config.system_prompt["critic_researcher"]
             critic_prompt = config.system_prompt["critic_researcher"]
         // If current_step is "critic_expert":
-        ELSE IF critic_type = "critic_expert" THEN
+        ELSE IF state["current_step"] = "critic_expert" THEN
             // Get critic_prompt from config.system_prompt["critic_expert"]
             critic_prompt = config.system_prompt["critic_expert"]
         // If current_step is invalid, raise RuntimeError
         ELSE
-            RAISE RuntimeError(f"Invalid critic type: {critic_type}")
+            RAISE RuntimeError(f"Invalid critic step: {state['current_step']}")
         END IF
         
-        // Create system prompt using SystemMessage with critic_prompt content
-        system_prompt = SystemMessage(content=critic_prompt)
+        // Create system prompt as list containing SystemMessage with critic_prompt content
+        sys_prompt = [SystemMessage(content=critic_prompt)]
         
         // Get agent conversation history using get_agent_conversation function with current_step
-        conversation_history = get_agent_conversation(state, critic_type)
+        message_history = get_agent_conversation(state, state["current_step"])
         
-        // Convert agent messages to LangChain format and take only the last message
-        langchain_messages = convert_agent_messages_to_langchain(conversation_history)
-        message_in = langchain_messages[-1]  // Take only the last message
+        // Convert agent messages to LangChain format and take only the last message as a list
+        message_in = [convert_agent_messages_to_langchain(message_history)[-1]]
         
         // Invoke LLM with system prompt concatenated with message history
-        messages = [system_prompt] + [message_in]
-        response = llm_critic.invoke(messages)
+        response = llm_critic.invoke(sys_prompt + message_in)
         
-        // Validate response using validate_llm_response function
-        validated_response = validate_llm_response(response, config.output_schemas)
+        // Validate response using validate_llm_response function with config.output_schema.keys() and "critic" component name
+        response = validate_llm_response(response, config.output_schema.keys(), "critic")
         
-        // Store critic decision and feedback based on current step:
-        IF critic_type = "critic_planner" THEN
+        // Store critic decision and feedback based on current step
+        IF state["current_step"] = "critic_planner" THEN
             // If critic_planner: store in critic_planner_decision and critic_planner_feedback
-            state.critic_planner_decision = validated_response["decision"]
-            state.critic_planner_feedback = validated_response["feedback"]
-        ELSE IF critic_type = "critic_researcher" THEN
+            state["critic_planner_decision"] = response["decision"]
+            state["critic_planner_feedback"] = response["feedback"]
+        ELSE IF state["current_step"] = "critic_researcher" THEN
             // If critic_researcher: store in critic_researcher_decision and critic_researcher_feedback
-            state.critic_researcher_decision = validated_response["decision"]
-            state.critic_researcher_feedback = validated_response["feedback"]
-        ELSE IF critic_type = "critic_expert" THEN
+            state["critic_researcher_decision"] = response["decision"]
+            state["critic_researcher_feedback"] = response["feedback"]
+        ELSE IF state["current_step"] = "critic_expert" THEN
             // If critic_expert: store in critic_expert_decision and critic_expert_feedback
-            state.critic_expert_decision = validated_response["decision"]
-            state.critic_expert_feedback = validated_response["feedback"]
+            state["critic_expert_decision"] = response["decision"]
+            state["critic_expert_feedback"] = response["feedback"]
         END IF
         
-        // Compose agent message using compose_agent_message function with sender="critic", receiver="orchestrator", type="response", and content containing decision and feedback
-        message_content = {
-            "decision": validated_response["decision"],
-            "feedback": validated_response["feedback"]
-        }
-        agent_message = compose_agent_message("critic", "orchestrator", "response", message_content)
+        // Compose agent message using compose_agent_message function with sender="critic", receiver="orchestrator", type="response", and formatted content string containing decision and feedback
+        message = compose_agent_message(
+            sender= "critic",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Critic complete. Decision: {response['decision']}, Feedback: {response['feedback']}",
+        )
         
-        // Send message using send_message function
-        send_message(state, agent_message)
+        // Send message using send_message function and assign returned state
+        state = send_message(state, message)
         
         // Log successful completion
         LOG_INFO("Critic completed successfully")
@@ -4332,15 +4527,15 @@ END FUNCTION
 **Internal Logic**:
 1. Define inner function finalizer_agent that takes GraphState as parameter
 2. Log the beginning of finalizer execution
-3. Create system prompt using SystemMessage with config.system_prompt content
+3. Create system prompt as list containing SystemMessage with config.system_prompt content
 4. Get agent conversation history using get_agent_conversation function
 5. Convert agent messages to LangChain format using convert_agent_messages_to_langchain function
 6. Invoke LLM with system prompt concatenated with message history
-7. Validate response using validate_llm_response function
+7. Validate response using validate_llm_response function with config.output_schema.keys() and "finalizer" component name
 8. Update state["final_answer"] with response["final_answer"]
 9. Update state["final_reasoning_trace"] with response["final_reasoning_trace"]
-10. Compose agent message using compose_agent_message function with sender="finalizer", receiver="orchestrator", type="response", and content containing final answer and reasoning trace
-11. Send message using send_message function
+10. Compose agent message using compose_agent_message function with sender="finalizer", receiver="orchestrator", type="response", and formatted content string containing final answer and reasoning trace
+11. Send message using send_message function and assign returned state
 12. Log successful completion
 13. Return the updated state
 14. Return the inner finalizer_agent function
@@ -4387,37 +4582,37 @@ FUNCTION create_finalizer_agent(config: AgentConfig, llm_finalizer: ChatOpenAI) 
         // Log the beginning of finalizer execution
         LOG_INFO("Finalizer starting execution")
         
-        // Create system prompt using SystemMessage with config.system_prompt content
-        system_prompt = SystemMessage(content=config.system_prompt)
+        // Create system prompt as list containing SystemMessage with config.system_prompt content
+        sys_prompt = [SystemMessage(content=config.system_prompt)]
         
         // Get agent conversation history using get_agent_conversation function
-        conversation_history = get_agent_conversation(state, "finalizer")
+        message_history = get_agent_conversation(state, "finalizer")
         
         // Convert agent messages to LangChain format using convert_agent_messages_to_langchain function
-        langchain_messages = convert_agent_messages_to_langchain(conversation_history)
+        message_in = convert_agent_messages_to_langchain(message_history)
         
         // Invoke LLM with system prompt concatenated with message history
-        messages = [system_prompt] + langchain_messages
-        response = llm_finalizer.invoke(messages)
+        response = llm_finalizer.invoke(sys_prompt + message_in)
         
-        // Validate response using validate_llm_response function
-        validated_response = validate_llm_response(response, config.output_schemas)
+        // Validate response using validate_llm_response function with config.output_schema.keys() and "finalizer" component name
+        response = validate_llm_response(response, config.output_schema.keys(), "finalizer")
         
         // Update state["final_answer"] with response["final_answer"]
-        state.final_answer = validated_response["final_answer"]
+        state["final_answer"] = response["final_answer"]
         
         // Update state["final_reasoning_trace"] with response["final_reasoning_trace"]
-        state.final_reasoning_trace = validated_response["final_reasoning_trace"]
+        state["final_reasoning_trace"] = response["final_reasoning_trace"]
         
-        // Compose agent message using compose_agent_message function with sender="finalizer", receiver="orchestrator", type="response", and content containing final answer and reasoning trace
-        message_content = {
-            "final_answer": validated_response["final_answer"],
-            "final_reasoning_trace": validated_response["final_reasoning_trace"]
-        }
-        agent_message = compose_agent_message("finalizer", "orchestrator", "response", message_content)
+        // Compose agent message using compose_agent_message function with sender="finalizer", receiver="orchestrator", type="response", and formatted content string containing final answer and reasoning trace
+        message = compose_agent_message(
+            sender= "finalizer",
+            receiver= "orchestrator",
+            type= "response",
+            content= f"Finalizer complete. The final answer is:\n{response['final_answer']}\n\n## The final reasoning trace is:\n{response['final_reasoning_trace']}",
+        )
         
-        // Send message using send_message function
-        send_message(state, agent_message)
+        // Send message using send_message function and assign returned state
+        state = send_message(state, message)
         
         // Log successful completion
         LOG_INFO("Finalizer completed successfully")
@@ -4466,18 +4661,21 @@ END FUNCTION
 **Component type**: function
 
 **Component purpose and responsibilities**:
-- **Purpose**: Create an OpenAI LLM with the given model and temperature
+- **Purpose**: Create an OpenAI LLM with the given model and temperature, with conditional structured output and tool binding
 - **Responsibilities**: 
   - Creates ChatOpenAI instance with specified model and temperature
-  - Configures structured output with JSON mode
+  - Binds tools to LLM if provided
+  - Configures structured output with JSON mode only for non-researcher/expert agents
   - Provides factory pattern for OpenAI LLM creation
   - Enables consistent LLM configuration across the system
 
 **Component interface**:
 - **Inputs**:
+  - name: string // The agent name for conditional structured output logic
   - model: string // The OpenAI model to use (e.g., "gpt-4", "gpt-3.5-turbo")
   - temperature: float // The temperature setting for the LLM (0.0 to 2.0)
-  - output_schema: dict // The structured output schema for JSON mode
+  - output_schema: dict = none // Optional structured output schema for JSON mode
+  - tools: list = none // Optional list of tools to bind to the LLM
 - **Outputs**:
   - ChatOpenAI // The configured OpenAI LLM instance
 - **Validations**:
@@ -4488,24 +4686,27 @@ END FUNCTION
 
 **Internal Logic**:
 1. Create ChatOpenAI instance with provided model and temperature parameters
-2. Configure the LLM with structured output using the provided output_schema and json_mode method
-3. Return the configured ChatOpenAI instance
+2. If tools are provided, bind them to the LLM using bind_tools method
+3. If output_schema is provided and agent name is not "researcher" or "expert", configure structured output using json_mode method
+4. Return the configured ChatOpenAI instance
 
 **Pseudocode**:
 ```
 // REQUIRED IMPORTS:
 // from langchain_openai import ChatOpenAI
 
-FUNCTION openai_llm_factory(model: string, temperature: float, output_schema: dict) -> ChatOpenAI
+FUNCTION openai_llm_factory(name: string, model: string, temperature: float, output_schema: dict = none, tools: list = none) -> ChatOpenAI
     /*
     Purpose: Create an OpenAI LLM with the given model and temperature
     
     BEHAVIOR:
+    - Accepts: name (string) - The agent name for conditional structured output logic
     - Accepts: model (string) - The OpenAI model to use (e.g., "gpt-4", "gpt-3.5-turbo")
     - Accepts: temperature (float) - The temperature setting for the LLM (0.0 to 2.0)
-    - Accepts: output_schema (dict) - The structured output schema for JSON mode
+    - Accepts: output_schema (dict) - Optional structured output schema for JSON mode
+    - Accepts: tools (list) - Optional list of tools to bind to the LLM
     - Produces: ChatOpenAI - The configured OpenAI LLM instance
-    - Handles: LLM configuration with structured output
+    - Handles: LLM configuration with conditional structured output and tool binding
     
     EXTERNAL DEPENDENCIES:
     - LangChain ChatOpenAI: Library for OpenAI LLM interface
@@ -4513,19 +4714,27 @@ FUNCTION openai_llm_factory(model: string, temperature: float, output_schema: di
     
     IMPLEMENTATION NOTES:
     - Should create ChatOpenAI instance with specified model and temperature
-    - Must configure structured output with JSON mode
-    - Should provide factory pattern for OpenAI LLM creation
-    - Must enable consistent LLM configuration across the system
+    - Must bind tools if provided
+    - Should configure structured output only for non-researcher/expert agents
+    - Must provide factory pattern for OpenAI LLM creation
+    - Should enable consistent LLM configuration across the system
     */
     
     // Create ChatOpenAI instance with provided model and temperature parameters
     llm = ChatOpenAI(model=model, temperature=temperature)
     
-    // Configure the LLM with structured output using the provided output_schema and json_mode method
-    configured_llm = llm.with_structured_output(output_schema, method="json_mode")
+    // If tools are provided, bind them to the LLM using bind_tools method
+    IF tools IS NOT none THEN
+        llm = llm.bind_tools(tools)
+    END IF
+    
+    // If output_schema is provided and agent name is not "researcher" or "expert", configure structured output using json_mode method
+    IF output_schema IS NOT none AND name NOT IN ("researcher", "expert") THEN
+        llm = llm.with_structured_output(output_schema, method="json_mode")
+    END IF
     
     // Return the configured ChatOpenAI instance
-    RETURN configured_llm
+    RETURN llm
     
 END FUNCTION
 ```
@@ -4567,6 +4776,7 @@ END FUNCTION
 **Component interface**:
 - **Inputs**:
   - config: AgentConfig // The configuration for the agent containing provider, model, temperature, and output_schema
+  - tools: list = none // Optional list of tools to bind to the LLM
 - **Outputs**:
   - ChatOpenAI // The LLM with structured output
 - **Validations**:
@@ -4579,19 +4789,20 @@ END FUNCTION
 **Internal Logic**:
 1. Check if config.provider equals "openai"
 2. If provider is "openai":
-   - Call openai_llm_factory function with config.model, config.temperature, and config.output_schema
+   - Call openai_llm_factory function with config.name, config.model, config.temperature, config.output_schema, and tools
    - Return the result from openai_llm_factory
 3. If provider is not "openai":
    - Raise ValueError with invalid provider message
 
 **Pseudocode**:
 ```
-FUNCTION llm_factory(config: AgentConfig) -> ChatOpenAI
+FUNCTION llm_factory(config: AgentConfig, tools: list = none) -> ChatOpenAI
     /*
     Purpose: Get the appropriate LLM factory based on the provider
     
     BEHAVIOR:
     - Accepts: config (AgentConfig) - The configuration for the agent containing provider, model, temperature, and output_schema
+    - Accepts: tools (list) - Optional list of tools to bind to the LLM
     - Produces: ChatOpenAI - The LLM with structured output
     - Handles: Provider routing and LLM factory delegation
     
@@ -4603,13 +4814,14 @@ FUNCTION llm_factory(config: AgentConfig) -> ChatOpenAI
     - Must support multiple LLM providers through factory pattern
     - Should delegate LLM creation to provider-specific factories
     - Must provide unified interface for LLM creation across different providers
+    - Should pass tools to provider-specific factories
     */
     
     // Check if config.provider equals "openai"
     IF config.provider = "openai" THEN
         // If provider is "openai":
-        // Call openai_llm_factory function with config.model, config.temperature, and config.output_schema
-        llm = openai_llm_factory(config.model, config.temperature, config.output_schema)
+        // Call openai_llm_factory function with config.name, config.model, config.temperature, config.output_schema, and tools
+        llm = openai_llm_factory(config.name, config.model, config.temperature, config.output_schema, tools)
         // Return the result from openai_llm_factory
         RETURN llm
     ELSE
@@ -4663,7 +4875,7 @@ END FUNCTION
 - **Inputs**:
   - agent_configs: dict[str, AgentConfig] // Dictionary containing all agent configurations
 - **Outputs**:
-  - StateGraph // Compiled graph ready for invocation
+  - Tuple[StateGraph, OpikTracer] // Compiled graph and OpikTracer ready for invocation
 - **Validations**:
   - Handled by LangGraph StateGraph validation
   - Agent configuration validation handled by individual factory functions
@@ -4686,39 +4898,40 @@ END FUNCTION
 - route_from_orchestrator function
 
 **Internal Logic**:
-1. Create LLM instances dynamically for all agents:
+1. Define Agent Tools:
+   - Get research tools using asyncio.run(get_research_tools())
+   - Get expert tools using get_expert_tools()
+2. Create LLMs dynamically:
    - Create llm_planner using llm_factory with planner config
-   - Create llm_researcher using llm_factory with researcher config
-   - Create llm_expert using llm_factory with expert config
+   - Create llm_researcher using llm_factory with researcher config and research_tools
+   - Create llm_expert using llm_factory with expert config and expert_tools
    - Create llm_critic using llm_factory with critic config
    - Create llm_finalizer using llm_factory with finalizer config
-2. Create Researcher Subgraphs:
-   - Get research tools using asyncio.run(get_research_tools())
-   - Bind research tools to llm_researcher
-   - Create researcher node using create_researcher_llm_node
-   - Create researcher graph using create_researcher_subgraph
-3. Create Expert Subgraphs:
-   - Get expert tools using get_expert_tools()
-   - Bind expert tools to llm_expert
-   - Create expert node using create_expert_llm_node
-   - Create expert graph using create_expert_subgraph
-4. Create agent functions with injected prompts and LLMs:
+3. Create Researcher Subgraphs:
+   - Create researcher node using create_researcher_llm_node with researcher config and llm_researcher
+   - Create researcher graph using create_researcher_subgraph with researcher_node and research_tools
+4. Create Expert Subgraphs:
+   - Create expert node using create_expert_llm_node with expert config and llm_expert
+   - Create expert graph using create_expert_subgraph with expert_node and expert_tools
+5. Create agent functions with injected prompts and LLMs:
    - Create planner_agent using create_planner_agent
    - Create researcher_agent using create_researcher_agent
    - Create expert_agent using create_expert_agent
    - Create critic_agent using create_critic_agent
    - Create finalizer_agent using create_finalizer_agent
-5. Create input interface with retry limit using create_input_interface
-6. Build the graph:
+6. Create input interface with retry limit using create_input_interface with agent_configs
+7. Build the graph:
    - Create StateGraph instance with GraphState
    - Add all nodes to the graph (input_interface, orchestrator, planner, researcher, expert, critic, finalizer)
-7. Add edges to the graph:
+8. Add edges to the graph:
    - Add edge from START to input_interface
    - Add edge from input_interface to orchestrator
    - Add edges from all agents to orchestrator
    - Add edge from finalizer to END
-8. Add conditional edges from orchestrator using route_from_orchestrator function with mapping dictionary containing "planner", "researcher", "expert", "critic", and "finalizer" routes
-9. Compile and return the graph using builder.compile()
+9. Add conditional edges from orchestrator using route_from_orchestrator function with mapping dictionary containing "planner", "researcher", "expert", "critic", and "finalizer" routes
+10. Compile the graph using builder.compile()
+11. Create the OpikTracer for LangGraph using OpikTracer(graph=app.get_graph(xray=True))
+12. Return both the compiled graph and OpikTracer
 
 **Pseudocode**:
 ```
@@ -4726,13 +4939,13 @@ END FUNCTION
 // from langgraph import StateGraph, START, END
 // import asyncio
 
-FUNCTION create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> StateGraph
+FUNCTION create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> Tuple[StateGraph, OpikTracer]
     /*
     Purpose: Factory function that creates and compiles a multi-agent graph with injected prompts
     
     BEHAVIOR:
     - Accepts: agent_configs (dict[str, AgentConfig]) - Dictionary containing all agent configurations
-    - Produces: StateGraph - Compiled graph ready for invocation
+    - Produces: Tuple[StateGraph, OpikTracer] - Compiled graph and OpikTracer ready for invocation
     - Handles: Complete multi-agent system graph creation and compilation
     
     DEPENDENCIES:
@@ -4766,37 +4979,24 @@ FUNCTION create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> Stat
     - Must provide unified graph creation interface for multi-agent system
     */
     
-    // Create LLM instances dynamically for all agents:
-    // Create llm_planner using llm_factory with planner config
-    llm_planner = llm_factory(agent_configs["planner"])
-    // Create llm_researcher using llm_factory with researcher config
-    llm_researcher = llm_factory(agent_configs["researcher"])
-    // Create llm_expert using llm_factory with expert config
-    llm_expert = llm_factory(agent_configs["expert"])
-    // Create llm_critic using llm_factory with critic config
-    llm_critic = llm_factory(agent_configs["critic"])
-    // Create llm_finalizer using llm_factory with finalizer config
-    llm_finalizer = llm_factory(agent_configs["finalizer"])
-    
-    // Create Researcher Subgraphs:
-    // Get research tools using asyncio.run(get_research_tools())
+    // Define Agent Tools
     research_tools = asyncio.run(get_research_tools())
-    // Bind research tools to llm_researcher
-    llm_researcher_with_tools = llm_researcher.bind_tools(research_tools)
-    // Create researcher node using create_researcher_llm_node
-    researcher_node = create_researcher_llm_node(llm_researcher_with_tools)
-    // Create researcher graph using create_researcher_subgraph
-    researcher_graph = create_researcher_subgraph(researcher_node)
-    
-    // Create Expert Subgraphs:
-    // Get expert tools using get_expert_tools()
     expert_tools = get_expert_tools()
-    // Bind expert tools to llm_expert
-    llm_expert_with_tools = llm_expert.bind_tools(expert_tools)
-    // Create expert node using create_expert_llm_node
-    expert_node = create_expert_llm_node(llm_expert_with_tools)
-    // Create expert graph using create_expert_subgraph
-    expert_graph = create_expert_subgraph(expert_node)
+
+    // Create LLMs dynamically
+    llm_planner = llm_factory(agent_configs["planner"])
+    llm_researcher = llm_factory(agent_configs["researcher"], research_tools)
+    llm_expert = llm_factory(agent_configs["expert"], expert_tools)
+    llm_critic = llm_factory(agent_configs["critic"])
+    llm_finalizer = llm_factory(agent_configs["finalizer"])   
+   
+    // Create Researcher Subgraphs    
+    researcher_node = create_researcher_llm_node(agent_configs["researcher"], llm_researcher)
+    researcher_graph = create_researcher_subgraph(researcher_node, research_tools)
+    
+    // Create Expert Subgraphs
+    expert_node = create_expert_llm_node(agent_configs["expert"], llm_expert)
+    expert_graph = create_expert_subgraph(expert_node, expert_tools)
     
     // Create agent functions with injected prompts and LLMs:
     // Create planner_agent using create_planner_agent
@@ -4810,8 +5010,8 @@ FUNCTION create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> Stat
     // Create finalizer_agent using create_finalizer_agent
     finalizer_agent = create_finalizer_agent(agent_configs["finalizer"], llm_finalizer)
     
-    // Create input interface with retry limit using create_input_interface
-    input_interface = create_input_interface(agent_configs["planner"].retry_limits)
+    // Create input interface with retry limit
+    input_interface = create_input_interface(agent_configs)
     
     // Build the graph:
     // Create StateGraph instance with GraphState
@@ -4825,18 +5025,13 @@ FUNCTION create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> Stat
     builder.add_node("critic", critic_agent)
     builder.add_node("finalizer", finalizer_agent)
     
-    // Add edges to the graph:
-    // Add edge from START to input_interface
-    builder.set_entry_point("input_interface")
-    // Add edge from input_interface to orchestrator
+    builder.add_edge(START, "input_interface")
     builder.add_edge("input_interface", "orchestrator")
-    // Add edges from all agents to orchestrator
     builder.add_edge("planner", "orchestrator")
     builder.add_edge("researcher", "orchestrator")
     builder.add_edge("expert", "orchestrator")
     builder.add_edge("critic", "orchestrator")
-    // Add edge from finalizer to END
-    builder.set_finish_point("finalizer")
+    builder.add_edge("finalizer", END)
     
     // Add conditional edges from orchestrator using route_from_orchestrator function with mapping dictionary containing "planner", "researcher", "expert", "critic", and "finalizer" routes
     builder.add_conditional_edges(
@@ -4851,9 +5046,13 @@ FUNCTION create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> Stat
         }
     )
     
-    // Compile and return the graph using builder.compile()
-    compiled_graph = builder.compile()
-    RETURN compiled_graph
+    // Compile and return the graph
+    app = builder.compile()
+
+    // Create the OpikTracer for LangGraph
+    opik_tracer = OpikTracer(graph=app.get_graph(xray=True))
+    
+    RETURN app, opik_tracer
     
 END FUNCTION
 ```
@@ -4880,6 +5079,244 @@ END FUNCTION
 **Error Handling**: None. All errors and exceptions will be uncaught and bubble up the call stack. This enables a global error handling design implemented in the entry point.
 
 ### Entry Point Components
+
+#### Load Prompt from File
+
+**Component name**: load_prompt_from_file
+
+**Component type**: function
+
+**Component purpose and responsibilities**:
+- **Purpose**: Load a prompt from a text file
+- **Responsibilities**: 
+  - Reads prompt content from specified file path
+  - Handles file encoding and error conditions
+  - Provides logging for successful and failed operations
+  - Returns cleaned prompt content
+
+**Component interface**:
+- **Inputs**:
+  - file_path: string // Path to the prompt file
+- **Outputs**:
+  - string // Content of the prompt file
+- **Validations**:
+  - Handled by file system operations and encoding validation
+
+**Direct Dependencies with Other Components**: None
+
+**Internal Logic**:
+1. Open the file with UTF-8 encoding in read mode
+2. Read the entire file content
+3. Strip whitespace from the content
+4. Log successful loading with debug level
+5. Return the cleaned content
+6. Handle FileNotFoundError with error logging and re-raise
+7. Handle other exceptions with error logging and re-raise
+
+**Pseudocode**:
+```
+FUNCTION load_prompt_from_file(file_path: string) -> string
+    /*
+    Purpose: Load a prompt from a text file
+    
+    BEHAVIOR:
+    - Accepts: file_path (string) - Path to the prompt file
+    - Produces: string - Content of the prompt file
+    - Handles: File reading with proper encoding and error handling
+    
+    IMPLEMENTATION NOTES:
+    - Should use UTF-8 encoding for file reading
+    - Must strip whitespace from loaded content
+    - Should provide comprehensive error handling
+    - Should include logging for debugging
+    */
+    
+    // Open the file with UTF-8 encoding in read mode
+    WITH open(file_path, "r", encoding="utf-8") AS file DO
+        // Read the entire file content
+        content ← file.read()
+        
+        // Strip whitespace from the content
+        cleaned_content ← content.strip()
+        
+        // Log successful loading with debug level
+        LOG_DEBUG(f"Successfully loaded prompt from: {file_path}")
+        
+        // Return the cleaned content
+        RETURN cleaned_content
+    END WITH
+    
+    // Handle FileNotFoundError with error logging and re-raise
+    CATCH FileNotFoundError AS error
+        LOG_ERROR(f"Prompt file not found: {file_path}")
+        RAISE FileNotFoundError(f"Prompt file not found: {file_path}")
+    
+    // Handle other exceptions with error logging and re-raise
+    CATCH Exception AS error
+        LOG_ERROR(f"Error reading prompt file {file_path}: {str(error)}")
+        RAISE Exception(f"Error reading prompt file {file_path}: {str(error)}")
+    
+END FUNCTION
+```
+
+**Workflow Control**: None
+
+**State Management**: Does not access any graph states.
+
+**Communication Patterns**: None. This component does not communicate, rather it handles file operations
+
+**External Dependencies**:
+- **File System**: Access to prompt files on the local file system
+
+**Global variables**: None
+
+**Closed-over variables**: None
+
+**Decorators**: None
+
+**Logging**:
+- Append logging (DEBUG) for successful file loading
+- Append logging (ERROR) for file not found errors
+- Append logging (ERROR) for other file reading errors
+
+**Error Handling**:
+- Raises FileNotFoundError if the prompt file is not found
+- Raises Exception for other file reading errors
+- Error messages include the file path and specific error details
+- All errors are logged before being re-raised
+
+#### Load Baseline Prompts
+
+**Component name**: load_baseline_prompts
+
+**Component type**: function
+
+**Component purpose and responsibilities**:
+- **Purpose**: Load all baseline prompts from the prompts/baseline directory
+- **Responsibilities**: 
+  - Automatically locates the baseline prompts directory
+  - Loads all required prompt files for each agent
+  - Handles directory path resolution and file loading
+  - Returns dictionary of agent prompts
+  - Provides comprehensive logging for the loading process
+
+**Component interface**:
+- **Inputs**:
+  - prompts_dir: string = none // Optional path to the prompts/baseline directory
+- **Outputs**:
+  - dict[string, string] // Dictionary containing all agent prompts
+- **Validations**:
+  - Handled by file system operations and load_prompt_from_file function
+
+**Direct Dependencies with Other Components**:
+- load_prompt_from_file function
+
+**Internal Logic**:
+1. If prompts_dir is None, automatically find the baseline prompts directory
+2. Log the directory being used for loading prompts
+3. Define the mapping of agent names to prompt file names
+4. Iterate through each agent name and file name pair
+5. Construct the full file path for each prompt file
+6. Load the prompt using load_prompt_from_file function
+7. Store the loaded prompt in the prompts dictionary
+8. Log successful loading of all prompts
+9. Return the complete prompts dictionary
+
+**Pseudocode**:
+```
+FUNCTION load_baseline_prompts(prompts_dir: string = none) -> dict[string, string]
+    /*
+    Purpose: Load all baseline prompts from the prompts/baseline directory
+    
+    BEHAVIOR:
+    - Accepts: prompts_dir (string) - Optional path to the prompts/baseline directory
+    - Produces: dict[string, string] - Dictionary containing all agent prompts
+    - Handles: Automatic directory location and prompt file loading
+    
+    DEPENDENCIES:
+    - load_prompt_from_file: Function to load individual prompt files
+    - File System: Access to prompt files on the local file system
+    
+    IMPLEMENTATION NOTES:
+    - Should automatically locate prompts directory if not provided
+    - Must load all required prompt files for each agent
+    - Should provide comprehensive logging for the loading process
+    - Should handle directory path resolution gracefully
+    */
+    
+    // If prompts_dir is None, automatically find the baseline prompts directory
+    IF prompts_dir IS none THEN
+        // Try to find the baseline prompts directory relative to this script
+        script_dir ← os.path.dirname(os.path.abspath(__file__))
+        // Go up one level from src/ to the project root, then into prompts/baseline
+        prompts_dir ← os.path.join(script_dir, "..", "prompts", "baseline")
+        prompts_dir ← os.path.normpath(prompts_dir)
+    END IF
+    
+    // Log the directory being used for loading prompts
+    LOG_INFO(f"Loading prompts from directory: {prompts_dir}")
+    
+    // Define the mapping of agent names to prompt file names
+    prompt_files ← {
+        "planner": "planner_system_prompt.txt",
+        "critic_planner": "critic_planner_system_prompt.txt",
+        "researcher": "researcher_system_prompt.txt",
+        "critic_researcher": "critic_researcher_system_prompt.txt",
+        "expert": "expert_system_prompt.txt",
+        "critic_expert": "critic_expert_system_prompt.txt",
+        "finalizer": "finalizer_system_prompt.txt"
+    }
+    
+    // Initialize empty prompts dictionary
+    prompts ← {}
+    
+    // Iterate through each agent name and file name pair
+    FOR EACH (agent_name, filename) IN prompt_files.items() DO
+        // Construct the full file path for each prompt file
+        file_path ← os.path.join(prompts_dir, filename)
+        
+        // Log debug information for each file being loaded
+        LOG_DEBUG(f"Loading prompt for {agent_name} from: {file_path}")
+        
+        // Load the prompt using load_prompt_from_file function
+        prompt_content ← load_prompt_from_file(file_path)
+        
+        // Store the loaded prompt in the prompts dictionary
+        prompts[agent_name] ← prompt_content
+    END FOR
+    
+    // Log successful loading of all prompts
+    LOG_INFO(f"Successfully loaded {len(prompts)} prompts")
+    
+    // Return the complete prompts dictionary
+    RETURN prompts
+    
+END FUNCTION
+```
+
+**Workflow Control**: None
+
+**State Management**: Does not access any graph states.
+
+**Communication Patterns**: None. This component does not communicate, rather it handles file operations
+
+**External Dependencies**:
+- **File System**: Access to prompt files on the local file system
+
+**Global variables**: None
+
+**Closed-over variables**: None
+
+**Decorators**: None
+
+**Logging**:
+- Append logging (INFO) for directory being used
+- Append logging (DEBUG) for each file being loaded
+- Append logging (INFO) for successful completion
+
+**Error Handling**:
+- None. All errors and exceptions will be uncaught and bubble up the call stack.
+- This enables a global error handling design implemented in the entry point.
 
 #### Prompt File Loader
 
@@ -5452,7 +5889,7 @@ END FUNCTION
 **Internal Logic**:
 1. Log an info message indicating the start of agent configuration creation
 2. Create configs dictionary with agent configurations:
-   - "planner": Create AgentConfig with name="planner", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"research_steps": list[str], "expert_steps": list[str]}, system_prompt=prompts["planner"], retry_limit=3
+   - "planner": Create AgentConfig with name="planner", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"research_steps": list[str], "expert_steps": list[str]}, system_prompt=prompts["planner"], retry_limit=5
    - "researcher": Create AgentConfig with name="researcher", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"result": str}, system_prompt=prompts["researcher"], retry_limit=5
    - "expert": Create AgentConfig with name="expert", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"expert_answer": str, "reasoning_trace": str}, system_prompt=prompts["expert"], retry_limit=5
    - "critic": Create AgentConfig with name="critic", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"decision": Literal["approve", "reject"], "feedback": str}, system_prompt={"critic_planner":prompts["critic_planner"], "critic_researcher":prompts["critic_researcher"], "critic_expert":prompts["critic_expert"]}, retry_limit=None
@@ -5496,72 +5933,19 @@ FUNCTION make_agent_configs(prompts: dict) -> dict[str, AgentConfig]
     */
     
     // Log an info message indicating the start of agent configuration creation
-    LOG_INFO("Creating agent configurations")
+    LOG_INFO("Creating agent configurations...")
     
     // Create configs dictionary with agent configurations:
     configs = {
-        // "planner": Create AgentConfig with name="planner", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"research_steps": list[str], "expert_steps": list[str]}, system_prompt=prompts["planner"], retry_limit=3
-        "planner": AgentConfig(
-            name="planner",
-            provider="openai",
-            model="gpt-4o-mini",
-            temperature=0.0,
-            output_schema={"research_steps": list[str], "expert_steps": list[str]},
-            system_prompt=prompts["planner"],
-            retry_limits={"planner": 3}
-        ),
-        
-        // "researcher": Create AgentConfig with name="researcher", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"result": str}, system_prompt=prompts["researcher"], retry_limit=5
-        "researcher": AgentConfig(
-            name="researcher",
-            provider="openai",
-            model="gpt-4o-mini",
-            temperature=0.0,
-            output_schema={"results": str},
-            system_prompt=prompts["researcher"],
-            retry_limits={"researcher": 5}
-        ),
-        
-        // "expert": Create AgentConfig with name="expert", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"expert_answer": str, "reasoning_trace": str}, system_prompt=prompts["expert"], retry_limit=5
-        "expert": AgentConfig(
-            name="expert",
-            provider="openai",
-            model="gpt-4o-mini",
-            temperature=0.0,
-            output_schema={"expert_answer": str, "reasoning_trace": str},
-            system_prompt=prompts["expert"],
-            retry_limits={"expert": 5}
-        ),
-        
-        // "critic": Create AgentConfig with name="critic", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"decision": Literal["approve", "reject"], "feedback": str}, system_prompt={"critic_planner":prompts["critic_planner"], "critic_researcher":prompts["critic_researcher"], "critic_expert":prompts["critic_expert"]}, retry_limit=None
-        "critic": AgentConfig(
-            name="critic",
-            provider="openai",
-            model="gpt-4o-mini",
-            temperature=0.0,
-            output_schema={"decision": Literal["approve", "reject"], "feedback": str},
-            system_prompt={
-                "critic_planner": prompts["critic_planner"],
-                "critic_researcher": prompts["critic_researcher"],
-                "critic_expert": prompts["critic_expert"]
-            },
-            retry_limits={}
-        ),
-        
-        // "finalizer": Create AgentConfig with name="finalizer", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"final_answer": str, "final_reasoning_trace": str}, system_prompt=prompts["finalizer"], retry_limit=None
-        "finalizer": AgentConfig(
-            name="finalizer",
-            provider="openai",
-            model="gpt-4o-mini",
-            temperature=0.0,
-            output_schema={"final_answer": str, "final_reasoning_trace": str},
-            system_prompt=prompts["finalizer"],
-            retry_limits={}
-        )
+        "planner": AgentConfig(name="planner", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"research_steps": list[str], "expert_steps": list[str]}, system_prompt=prompts["planner"], retry_limit=5),
+        "researcher": AgentConfig(name="researcher", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"result": str}, system_prompt=prompts["researcher"], retry_limit=5),
+        "expert": AgentConfig(name="expert", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"expert_answer": str, "reasoning_trace": str}, system_prompt=prompts["expert"], retry_limit=5),
+        "critic": AgentConfig(name="critic", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"decision": Literal["approve", "reject"], "feedback": str}, system_prompt={"critic_planner":prompts["critic_planner"], "critic_researcher":prompts["critic_researcher"], "critic_expert":prompts["critic_expert"]}, retry_limit=None),
+        "finalizer": AgentConfig(name="finalizer", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"final_answer": str, "final_reasoning_trace": str}, system_prompt=prompts["finalizer"], retry_limit=None),
     }
     
     // Log an info message indicating successful creation with the number of agent configurations created
-    LOG_INFO(f"Successfully created {len(configs)} agent configurations")
+    LOG_INFO(f"Created {len(configs)} agent configurations")
     
     // Return the configs dictionary
     RETURN configs
@@ -5626,42 +6010,49 @@ END FUNCTION
 - create_multi_agent_graph function
 - read_jsonl_file function
 - write_jsonl_file function
+- opik.configure function
+- uuid.uuid4 function
 
 **Internal Logic**:
 1. Enter a try block to handle potential application errors
-2. Log an info message indicating application start
-3. Load baseline prompts:
+2. Configure Opik for real-time flushing using opik.configure(use_local=True)
+3. Log an info message indicating application start
+4. Load baseline prompts:
    - Log info message indicating start of baseline prompt loading
    - Call load_baseline_prompts() function
    - Log info message with number of prompts loaded and their keys
-4. Create agent configurations:
+5. Create agent configurations:
    - Call make_agent_configs(prompts) function
-5. Create multi-agent graph:
+6. Create multi-agent graph:
    - Log info message indicating start of graph creation
-   - Call create_multi_agent_graph(agent_configs) function
+   - Call create_multi_agent_graph(agent_configs) function to get both graph and opik_tracer
    - Log info message indicating successful graph creation
-6. Initialize processing variables:
-   - Set jsonl_file_path to "/home/joe/python-proj/hf-agents-course/src/metadata.jsonl"
+7. Initialize processing variables:
+   - Set jsonl_file_path to "/home/joe/python-proj/hf-ai-agents-course/src/hello_world.jsonl"
    - Initialize empty responses list
    - Log info message indicating start of JSONL file processing
-7. Process each item in the JSONL file:
+8. Process each item in the JSONL file:
    - Iterate through items returned by read_jsonl_file(jsonl_file_path)
    - Check if item["Level"] equals 1
    - If Level is 1:
      - Log info message with the question being processed
+     - Generate unique thread_id using uuid.uuid4()
+     - Create config object with opik_tracer callbacks, thread_id, and recursion_limit
      - Check if item["file_name"] is not empty
      - If file_name is not empty, set file_path to "/home/joe/datum/gaia_lvl1/{item['file_name']}"
      - If file_name is empty, set file_path to empty string
-     - Invoke graph with question and file_path using graph.invoke()
-     - Create response dictionary with task_id, model_answer, and reasoning_trace
+     - Invoke graph with question and file_path using graph.invoke() with config
+     - Create response dictionary with task_id, model_answer, reasoning_trace, and thread_id
      - Append response to responses list
      - Log info message indicating question completion
+     - Flush opik_tracer traces after each question
      - Sleep for 5 seconds using time.sleep(5)
-8. Write results to output file:
+9. Write results to output file:
    - Log info message indicating start of response writing
-   - Call write_jsonl_file(responses, "/home/joe/python-proj/hf-agents-course/src/gaia_lvl1_responses.jsonl")
-9. Log info message indicating successful application completion
-10. If any Exception occurs:
+   - Call write_jsonl_file(responses, "/home/joe/python-proj/hf-ai-agents-course/src/gaia_lvl1_responses.jsonl")
+10. Log info message indicating successful application completion
+11. If any Exception occurs:
+    - Try to flush opik_tracer traces
     - Log error message with exception details
     - Print error message to console
     - Exit application with exit code 1 using sys.exit(1)
@@ -5710,12 +6101,16 @@ FUNCTION main() -> None
     
     // Enter a try block to handle potential application errors
     TRY
+        // Configure Opik for real-time flushing
+        from opik import configure
+        configure(use_local=True)
+        
         // Log an info message indicating application start
-        LOG_INFO("Starting multi-agent system application")
+        LOG_INFO("Application started")
         
         // Load baseline prompts:
         // Log info message indicating start of baseline prompt loading
-        LOG_INFO("Loading baseline prompts")
+        LOG_INFO("Loading baseline prompts...")
         // Call load_baseline_prompts() function
         prompts = load_baseline_prompts()
         // Log info message with number of prompts loaded and their keys
@@ -5727,19 +6122,19 @@ FUNCTION main() -> None
         
         // Create multi-agent graph:
         // Log info message indicating start of graph creation
-        LOG_INFO("Creating multi-agent graph")
-        // Call create_multi_agent_graph(agent_configs) function
-        graph = create_multi_agent_graph(agent_configs)
+        LOG_INFO("Creating multi-agent graph...")
+        // Call create_multi_agent_graph(agent_configs) function to get both graph and opik_tracer
+        (graph, opik_tracer) = create_multi_agent_graph(agent_configs)
         // Log info message indicating successful graph creation
-        LOG_INFO("Successfully created multi-agent graph")
+        LOG_INFO("Graph created successfully!")
         
         // Initialize processing variables:
-        // Set jsonl_file_path to "/home/joe/python-proj/hf-agents-course/src/metadata.jsonl"
-        jsonl_file_path = "/home/joe/python-proj/hf-agents-course/src/metadata.jsonl"
+        // Set jsonl_file_path to "/home/joe/python-proj/hf-ai-agents-course/src/hello_world.jsonl"
+        jsonl_file_path = "/home/joe/python-proj/hf-ai-agents-course/src/hello_world.jsonl"
         // Initialize empty responses list
         responses = []
         // Log info message indicating start of JSONL file processing
-        LOG_INFO("Starting JSONL file processing")
+        LOG_INFO("Starting to process JSONL file...")
         
         // Process each item in the JSONL file:
         // Iterate through items returned by read_jsonl_file(jsonl_file_path)
@@ -5748,9 +6143,20 @@ FUNCTION main() -> None
             IF item["Level"] = 1 THEN
                 // If Level is 1:
                 // Log info message with the question being processed
-                LOG_INFO(f"Processing question: {item['question']}")
+                LOG_INFO(f"Processing question: {item['Question']}")
+                
+                // Generate unique thread_id using uuid.uuid4()
+                thread_id = str(uuid.uuid4())
+                
+                // Create config object with opik_tracer callbacks, thread_id, and recursion_limit
+                config = {
+                    "callbacks": [opik_tracer],
+                    "configurable": {"thread_id": thread_id},
+                    "recursion_limit": 100
+                }
+                
                 // Check if item["file_name"] is not empty
-                IF item["file_name"] THEN
+                IF item["file_name"] != "" THEN
                     // If file_name is not empty, set file_path to "/home/joe/datum/gaia_lvl1/{item['file_name']}"
                     file_path = f"/home/joe/datum/gaia_lvl1/{item['file_name']}"
                 ELSE
@@ -5758,24 +6164,24 @@ FUNCTION main() -> None
                     file_path = ""
                 END IF
                 
-                // Invoke graph with question and file_path using graph.invoke()
-                result = graph.invoke({
-                    "question": item["question"],
-                    "file_path": file_path
-                })
+                result = graph.invoke({"question": item["Question"], "file": file_path}, config=config)
                 
-                // Create response dictionary with task_id, model_answer, and reasoning_trace
+                // Create response dictionary with task_id, model_answer, reasoning_trace, and thread_id
                 response = {
                     "task_id": item["task_id"],
                     "model_answer": result["final_answer"],
-                    "reasoning_trace": result["final_reasoning_trace"]
+                    "reasoning_trace": result["final_reasoning_trace"],
+                    "thread_id": thread_id
                 }
                 
                 // Append response to responses list
                 responses.append(response)
                 
                 // Log info message indicating question completion
-                LOG_INFO(f"Completed question: {item['task_id']}")
+                LOG_INFO(f"Completed question: {item['Question']}")
+                
+                // Flush opik_tracer traces after each question
+                opik_tracer.flush()
                 
                 // Sleep for 5 seconds using time.sleep(5)
                 time.sleep(5)
@@ -5784,23 +6190,26 @@ FUNCTION main() -> None
         
         // Write results to output file:
         // Log info message indicating start of response writing
-        LOG_INFO("Writing responses to output file")
-        // Call write_jsonl_file(responses, "/home/joe/python-proj/hf-agents-course/src/gaia_lvl1_responses.jsonl")
-        write_jsonl_file(responses, "/home/joe/python-proj/hf-agents-course/src/gaia_lvl1_responses.jsonl")
+        LOG_INFO("Writing responses to output file...")
+        // Call write_jsonl_file(responses, "/home/joe/python-proj/hf-ai-agents-course/src/gaia_lvl1_responses.jsonl")
+        write_jsonl_file(responses, "/home/joe/python-proj/hf-ai-agents-course/src/gaia_lvl1_responses.jsonl")
         
         // Log info message indicating successful application completion
-        LOG_INFO("Application completed successfully")
+        LOG_INFO("Application finished successfully")
         
-    CATCH Exception AS error
+    CATCH Exception AS e
         // If any Exception occurs:
-        // Log error message with exception details
-        LOG_ERROR(f"Application failed: {error}")
-        // Print error message to console
-        PRINT(f"Application failed: {error}")
-        // Exit application with exit code 1 using sys.exit(1)
-        sys.exit(1)
-        
-    END TRY
+        // Try to flush opik_tracer traces
+        TRY
+            opik_tracer.flush()
+        FINALLY
+            // Log error message with exception details
+            LOG_ERROR(f"Application failed: {str(e)}")
+            // Print error message to console
+            PRINT(f"Application failed: {str(e)}")
+            // Exit application with exit code 1 using sys.exit(1)
+            sys.exit(1)
+        END TRY
     
 END FUNCTION
 ```
@@ -5818,6 +6227,8 @@ END FUNCTION
 - **Python time**: Library for sleep operations
 - **Python sys**: Library for system exit operations
 - **Python logging**: Library for comprehensive logging
+- **Python uuid**: Library for generating unique identifiers
+- **Opik**: Library for observability and tracing
 
 **Global variables**: None
 
@@ -5839,9 +6250,10 @@ END FUNCTION
 - Append logging (ERROR) if application fails with exception details
 
 **Error Handling**:
-- Catches any Exception and logs error with details
-- Prints error message to console
+- Catches any Exception and attempts to flush opik_tracer traces
+- Logs error with details and prints error message to console
 - Exits application with exit code 1 using sys.exit(1)
+- Ensures opik_tracer flushing even in error conditions
 - All errors and exceptions will be uncaught and bubble up the call stack
 - This enables a global error handling design implemented in the entry point.
 

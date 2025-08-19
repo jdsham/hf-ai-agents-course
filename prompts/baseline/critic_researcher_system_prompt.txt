@@ -25,12 +25,8 @@ Tell the researcher what you approve of, what you do not approve of, and how to 
 
 ## Output Format (JSON)
 Output a JSON object with the following schema:
-{{
+{
     "decision": "approve" | "reject",
     "feedback": "string containing the feedback on how to improve the research results"
-}}
+}
 Do not include any other text in your response. It must be a valid JSON object only.
-
-
-## Use the following research request to evaluate the research results:
-{research_request} 

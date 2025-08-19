@@ -1,12 +1,14 @@
 from langgraph.graph import MessagesState, StateGraph, START, END
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
-from typing import Any, Literal, Optional, TypedDict, List, Annotated, cast, Callable
-from IPython.display import Image, display
+from typing import Any, Literal, Optional, TypedDict, List, Annotated, Callable, Tuple
 import operator
 import json
 import logging
 from langchain_openai import ChatOpenAI
-import sys
+
+
+from opik.integrations.langchain import OpikTracer
+from opik import track
 
 # Create logger for this module (uses root logger configuration from main.py)
 logger = logging.getLogger(__name__)
@@ -27,6 +29,31 @@ import asyncio
 from langchain_experimental.tools.python.tool import PythonREPLTool
 from langchain_community.document_loaders import TextLoader
 import pint
+
+
+def create_sync_wrapper_for_mcp_tool(async_tool):
+    """Create a synchronous wrapper for an asynchronous MCP tool."""
+    def sync_wrapper(*args, **kwargs):
+        import asyncio
+        try:
+            # Check if we're already in an event loop
+            loop = asyncio.get_running_loop()
+            # If we are, we need to run in a new thread to avoid blocking
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, async_tool.arun(*args, **kwargs))
+                return future.result()
+        except RuntimeError:
+            # No event loop running, we can create one
+            return asyncio.run(async_tool.arun(*args, **kwargs))
+    
+    # Copy the tool's metadata to the wrapper
+    sync_wrapper.__name__ = async_tool.name
+    sync_wrapper.__doc__ = async_tool.description
+    sync_wrapper.args_schema = async_tool.args_schema
+    sync_wrapper.return_direct = async_tool.return_direct
+    
+    return sync_wrapper
 
 ########################################################
 # < Graph State & Agent Messages >
@@ -83,6 +110,7 @@ class GraphState(MessagesState):
     planner_retry_limit: int
     researcher_retry_limit: int
     expert_retry_limit: int
+    retry_failed:bool
 
 
 
@@ -166,14 +194,14 @@ def validate_llm_response(response: Any, expected_fields: List[str], component: 
 ########################################################
 # < Inter-Agent Communication >
 ########################################################
-def compose_agent_message(sender: str, receiver: str, message_type: str, content: str, step_id: Optional[int] = None) -> AgentMessage:
+def compose_agent_message(sender: str, receiver: str, type: str, content: str, step_id: Optional[int] = None) -> AgentMessage:
     """
     Composes an agent message using the AgentMessage protocol and data structure.
     
     Args:
         sender: str - The entity sending the message, either an agent or the orchestrator
         receiver: str - The entity receiving the message, either an agent or the orchestrator
-        message_type: str - The type of message that is being sent: instruction, response, feedback
+        type: str - The type of message that is being sent: instruction, response, feedback
         content: str - The message content / message body
         step_id: Optional[int] - Optional. The specific research step id associated with message being composed
         
@@ -188,7 +216,7 @@ def compose_agent_message(sender: str, receiver: str, message_type: str, content
     agent_message: AgentMessage = {
         "sender": sender,
         "receiver": receiver,
-        "type": message_type,
+        "type": type,
         "content": content,
         "step_id": step_id,
         "timestamp": current_timestamp
@@ -296,15 +324,16 @@ def unstructured_excel_tool(file_path: str) -> list[Document]:
     """
     Load an Excel file and return the content.
     """
+    logger.info(f"Loading Excel file: {file_path}")
     loader = UnstructuredExcelLoader(file_path)
     return loader.load()
-
 
 @tool
 def unstructured_powerpoint_tool(file_path: str) -> list[Document]:
     """
     Load a PowerPoint file and return the content.
     """
+    logger.info(f"Loading PowerPoint file: {file_path}")
     loader = UnstructuredPowerPointLoader(file_path)
     return loader.load()
 
@@ -314,6 +343,7 @@ def unstructured_pdf_tool(file_path: str) -> list[Document]:
     """
     Load a PDF file and return the content.
     """
+    logger.info(f"Loading PDF file: {file_path}")
     loader = UnstructuredPDFLoader(file_path)
     return loader.load()
 
@@ -323,6 +353,7 @@ def text_file_tool(file_path: str) -> str:
     """
     Load a text file and return the content.
     """
+    logger.info(f"Loading text file: {file_path}")
     loader = TextLoader(file_path)
     documents = loader.load()
     if documents:
@@ -338,14 +369,44 @@ async def get_browser_mcp_tools(mcp_url: str) -> list:
         mcp_url (str): The URL of the browser MCP
 
     Returns:
-        list: The list of MCP tools
+        list: The list of MCP tools with sync wrappers
     """
     async with streamablehttp_client(mcp_url) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             mcp_tools = await load_mcp_tools(session)
-            return mcp_tools
+            
+            # Create sync wrappers for each MCP tool
+            sync_mcp_tools = []
+            for mcp_tool in mcp_tools:
+                sync_tool = create_sync_wrapper_for_mcp_tool(mcp_tool)
+                # Convert the sync wrapper back to a LangChain Tool
+                from langchain_core.tools import tool
+                wrapped_tool = tool(sync_tool)
+                sync_mcp_tools.append(wrapped_tool)
+            
+            return sync_mcp_tools
 
+
+@tool
+def wikipedia_tool(query: str) -> str:
+    """
+    Search for information on Wikipedia.
+    """
+    logger.info(f"Wikipedia tool searching for: {query}")
+    wikipedia_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper(wiki_client=None))
+    return wikipedia_tool.invoke(query)
+
+
+@tool
+def tavily_tool(query: str) -> str:
+    """
+    Search for information on the web.
+    """
+    logger.info(f"Tavily tool searching for: {query}")
+    tavily_tool = TavilySearch()
+    return tavily_tool.invoke(query)
+    
 
 async def get_research_tools() -> list[Tool]:
     """Get the research tools.
@@ -353,9 +414,6 @@ async def get_research_tools() -> list[Tool]:
     Returns:
         list: The list of research tools
     """
-    wikipedia_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper(wiki_client=None))
-    tavily_tool = TavilySearch()
-
     browser_mcp_url = "http://0.0.0.0:3000/mcp"
     mcp_tools = await get_browser_mcp_tools(browser_mcp_url)
     return [
@@ -379,15 +437,13 @@ def create_researcher_llm_node(config: AgentConfig, llm_researcher: ChatOpenAI) 
     Returns:
         Callable[[ResearcherState], ResearcherState]: The researcher LLM node function
     """
-    #llm_researcher = researcher_llm.bind_tools(research_tools).with_structured_output(output_schema, method="json_mode")
     def researcher_llm_node(state: ResearcherState) -> ResearcherState:
         """Researcher LLM node function with the given prompt and LLM."""
         sys_prompt = [SystemMessage(content=config.system_prompt)]
         response = llm_researcher.invoke(sys_prompt + state["messages"])
-        if validate_output_matches_json_schema(response, config.output_schema.keys()):
-            return {"messages": [AIMessage(content=json.dumps(response))], "result": response["result"]}
-        else:
-            return {"messages": [response]}
+        if hasattr(response, 'tool_calls') and response.tool_calls:
+            logger.info(f"Researcher tool calls: {response.tool_calls}")
+        return {"messages": [response]}
     return researcher_llm_node
 
 def create_researcher_subgraph(researcher_llm_node: Callable, research_tools: list) -> StateGraph:
@@ -449,29 +505,36 @@ def calculator(expression: str) -> str:
     return str(result)
 
 
+@tool
+def python_repl_tool(code: str) -> str:
+    """
+    Use this when you need to run Python code.
+    Args:
+        code: The Python code to execute
+    Returns:
+        The result of the code execution as a string.
+    """
+    logger.info(f"Executing the following python code: {code}")
+    python_repl_tool = PythonREPLTool()
+    return python_repl_tool.invoke(code)
+
+
 def get_expert_tools() -> List[Tool]:
     """Get the expert tools.
 
     Returns:
         list: The list of expert tools
     """
-    python_repl_tool = PythonREPLTool()
     return [unit_converter, calculator, python_repl_tool]
-
 
 
 def create_expert_llm_node(config: AgentConfig, llm_expert: ChatOpenAI) -> Callable[[ExpertState], ExpertState]:
     """Create an expert LLM node function with the given prompt and LLM."""
-    #output_schema = {"expert_answer": str, "reasoning_trace": str}
-    #llm_expert_structured = llm_expert_with_tools.with_structured_output(output_schema, method="json_mode")
-        
     def expert_llm_node(state: ExpertState) -> ExpertState:
         sys_prompt = [SystemMessage(content=config.system_prompt)]
         response = llm_expert.invoke(sys_prompt + state["messages"])    
-        if validate_output_matches_json_schema(response, config.output_schema.keys()):
-            state["expert_answer"] = response["expert_answer"]
-            state["expert_reasoning"] = response["reasoning_trace"]
-            response = AIMessage(content=f"Expert answer: {state['expert_answer']}\nExpert reasoning: {state['expert_reasoning']}")
+        if hasattr(response, 'tool_calls') and response.tool_calls:
+            logger.info(f"Expert tool calls: {response.tool_calls}")
         return {"messages": [response]}
     return expert_llm_node
 
@@ -534,7 +597,7 @@ def create_input_interface(agent_configs: dict[str, AgentConfig]):
         state["planner_retry_limit"] = agent_configs["planner"].retry_limit
         state["researcher_retry_limit"] = agent_configs["researcher"].retry_limit
         state["expert_retry_limit"] = agent_configs["expert"].retry_limit
-      
+        state["retry_failed"] = False
         
         logger.info("Input interface completed successfully")
         return state
@@ -561,6 +624,7 @@ def determine_next_step(state: GraphState) -> GraphState:
     # Handle critic decisions and set next step accordingly
     if state["current_step"] == "critic_planner":
         if state["critic_planner_decision"] == "approve":
+            logger.info("Planner approved.")
             if len(state["research_steps"]) > 0:
                 state["next_step"] = "researcher"
             else:
@@ -568,9 +632,11 @@ def determine_next_step(state: GraphState) -> GraphState:
         elif state["critic_planner_decision"] == "reject":
             state["next_step"] = "planner"
             state["planner_retry_count"] += 1
+            logger.info(f"Planner rejected. Retry count: {state['planner_retry_count']}")
     
     elif state["current_step"] == "critic_researcher":
         if state["critic_researcher_decision"] == "approve":
+            logger.info("Researcher approved.")
             # Check if all research steps are completed
             if state["current_research_index"] + 1 >= len(state["research_steps"]):
                 state["next_step"] = "expert"
@@ -579,13 +645,16 @@ def determine_next_step(state: GraphState) -> GraphState:
         elif state["critic_researcher_decision"] == "reject":
             state["next_step"] = "researcher"
             state["researcher_retry_count"] += 1
+            logger.info(f"Researcher rejected. Retry count: {state['researcher_retry_count']}")
     
     elif state["current_step"] == "critic_expert":
         if state["critic_expert_decision"] == "approve":
+            logger.info("Expert approved.")
             state["next_step"] = "finalizer"
         elif state["critic_expert_decision"] == "reject":
             state["next_step"] = "expert"
             state["expert_retry_count"] += 1
+            logger.info(f"Expert rejected. Retry count: {state['expert_retry_count']}")
     
     # Handle initial state and non-critic steps
     elif state["current_step"] == "" or state["current_step"] == "input":
@@ -616,10 +685,150 @@ def check_retry_limit(state: GraphState) -> GraphState:
         or state["expert_retry_count"] >= state["expert_retry_limit"]):
         # Log the failure
         logger.info(f"Graceful Failure: Retry limit exceeded for {state['next_step']}")
+        state["retry_failed"] = True
         state["next_step"] = "finalizer"
         state["final_answer"] = "The question could not be answered."
         state["final_reasoning_trace"] = "The question could not be answered."
     return state
+
+
+orchestrator_msg_to_critic_planner = """
+Use the following context to answer the User Question:
+
+## Context:
+
+### Planner Task
+The planner was asked to develop a logical plan to answer the following input question:
+{question}
+
+### Planner Plan
+The planner determined the following research steps were needed to answer the question: 
+{research_steps}
+
+The planner determined the following expert steps were needed to answer the question:
+{expert_steps}
+
+## The User Question:
+Does the planner's plan have the correct and logical research and expert steps needed to answer the input question? If yes, approve. If no, reject.
+If rejected, provide direct feedback on how the planner could improve their plan, to a satisfactory level.
+"""
+
+orchestrator_msg_to_critic_planner_with_file = """
+Use the following context to answer the User Question:
+
+## Context:
+
+### Planner Task
+The planner was asked to develop a logical plan to answer the following input question:
+{question}
+
+### File
+The following file must be used in reference to answer the question:
+{file}
+
+### Planner Plan
+The planner determined the following research steps were needed to answer the question: 
+{research_steps}
+
+The planner determined the following expert steps were needed to answer the question:
+{expert_steps}
+
+## The User Question:
+Does the planner's plan have the correct and logical research and expert steps needed to answer the input question?
+Does it also include the file in the research steps?
+If yes, approve. If no, reject.
+If rejected, provide direct feedback on how the planner could improve their plan, to a satisfactory level.
+"""
+
+orchestrator_msg_to_critic_researcher = """
+Use the following context and recommended instructions to answer the User Question:
+
+## Context:
+
+### Research Topic
+The researcher was asked to research the following topic: {research_topic}
+
+### Research Results
+The researcher's results are: 
+{research_results}
+
+## The User Question:
+Does the researcher's results contain sufficient information on the topic? If yes, approve. If no, reject.
+If rejected, provide direct feedback on how the researcher could improve their research, to a satisfactory level.
+"""
+
+orchestrator_msg_to_expert = """
+Use the following context and recommended instructions to answer the User Question:
+
+## Context:
+
+### Researched Information:
+{research_results}
+
+### Recommended Instructions:
+It was recommended to perform the following steps to answer the question:
+{expert_steps}
+
+## The User Question:
+Answer the question: {question}
+"""
+
+
+orchestrator_msg_to_critic_expert = """
+Use the following context answer the User Question:
+
+## Context
+### Expert Question
+The expert was asked to answer the following question: {question}
+
+### Researched Information:
+The expert had the following researched information to use to answer the question:
+{research_results}
+
+### Expert Answer:
+The expert gave the following answer and reasoning:
+Expert answer: 
+{expert_answer}
+
+Expert reasoning: 
+{expert_reasoning}
+
+## User Question:
+Does the expert's answer actually answer the question to a satisfactory level? If yes, approve. If no, reject.
+If rejected, provide direct feedback on how the expert could improve their answer, to a satisfactory level."
+"""
+
+orchestrator_msg_to_finalizer = """
+Use the following context to perform the User Task:
+
+## Context
+### The question that had to be answered:
+{question}
+
+### The research steps are:
+{research_steps}
+
+### The expert steps are:
+{expert_steps}
+
+### The expert's answer is:
+{expert_answer}
+
+### The expert's reasoning is:
+{expert_reasoning} 
+
+
+## User Task
+Generate the final answer and reasoning trace (logical steps) to answer the question.
+"""
+
+orchestrator_msg_to_finalizer_retry_failed = """
+Generate the output with the following content:
+{
+    "final_answer": "The question could not be answered.",
+    "final_reasoning_trace": "The question could not be answered."
+}
+"""
 
 
 def execute_next_step(state: GraphState) -> GraphState:
@@ -662,21 +871,17 @@ def execute_next_step(state: GraphState) -> GraphState:
     
     elif state["current_step"] == "critic_planner":
         # Add context to the last message to the critic.
-        task = f"Use the following context to answer the User Question:\n\n## Context\n### Planner Task\nThe planner was asked to develop a logical plan to answer the following input question: {state['question']}\n\n"
-        file_info = ""
+
         if state["file"]:
-            file_info = f"\n\nThe following file must be used in reference to answer the question:\n {state["file"]}"
-        task += file_info
-        research_steps = f"### Planner's Plan\nThe planner determined the following research steps were needed to answer the question: {state['research_steps']}"
-        expert_steps =  f"\nThe planner determined the following expert steps were needed to answer the question: {state['expert_steps']}\n\n"
-        user_question = "## User Question:\nDoes the planner's plan have the correct and logical research and expert steps needed to answer the input question? If yes, approve. If no, reject."
+            content = orchestrator_msg_to_critic_planner_with_file.format(question=state["question"], file=state["file"], research_steps=state["research_steps"], expert_steps=state["expert_steps"])
+        else:
+            content = orchestrator_msg_to_critic_planner.format(question=state["question"], research_steps=state["research_steps"], expert_steps=state["expert_steps"])
         message = compose_agent_message(
             sender= "orchestrator",
             receiver= "critic_planner",
             type= "instruction",
-            content= task + research_steps + expert_steps + user_question,
+            content= content,
         )
-    
     elif state["current_step"] == "researcher":
         if state["critic_researcher_decision"] == "reject":
             # Retry with feedback
@@ -697,22 +902,14 @@ def execute_next_step(state: GraphState) -> GraphState:
                 type= "instruction",
                 content= f"Research the following topic or question: {state['research_steps'][state['current_research_index']]}",
                 step_id= state["current_research_index"],
-            )
-
-    
+            )   
     elif state["current_step"] == "critic_researcher":
-        # Add context to the last message to the critic.
-        topic = f"Use the following context to answer the User Question:\n\n## Context\n### Research Topic\nThe researcher was asked to research the following topic: {state['research_steps'][state['current_research_index']]}\n\n"
-        results = f"### Research Results\nThe researcher's results are: {state['research_results'][state['current_research_index']]}\n\n"
-        user_question = "## User Question:\nDoes the researcher's results contain sufficient information on the topic? If yes, approve. If no, reject."
-       
         message = compose_agent_message(
             sender= "orchestrator",
             receiver= "critic_researcher",
             type= "instruction",
-            content= topic + results + user_question,
+            content= orchestrator_msg_to_critic_researcher.format(research_topic=state["research_steps"][state["current_research_index"]], research_results=state["research_results"][state["current_research_index"]]),
         )
-    
     elif state["current_step"] == "expert":
         if state["critic_expert_decision"] == "reject":
             # Retry with feedback
@@ -723,38 +920,36 @@ def execute_next_step(state: GraphState) -> GraphState:
                 content= f"Use the following feedback to improve your answer:\n{state["critic_expert_feedback"]}",
             )
         else:
-            context = f"Use the following context and recommended instructions to answer the question:\n ## Context:\n{state['research_results']}\n\n"
-            expert_steps = f"## Recommended Instructions:\nIt was recommended to perform the following steps to answer the question:\n{state['expert_steps']}\n\n"
-            user_question = f"## The Question:\nAnswer the question: {state['question']}"
-
             message = compose_agent_message(
                 sender= "orchestrator",
                 receiver= "expert",
                 type= "instruction",
-                content= context + expert_steps + user_question,
+                content= orchestrator_msg_to_expert.format(research_results=state["research_results"], expert_steps=state["expert_steps"], question=state["question"]),
             )
     
     elif state["current_step"] == "critic_expert":
-        # Add context to the last message to the critic.
-        question = f"Use the following context answer the User Question:\n ## Context:\n\n### Expert Question:\n The expert was asked to answer the following question: {state['question']}\n\n"
-        context = f"### Researched Information:\nThe expert had the following researched information to use to answer the question:\n{state["research_results"]}\n\n"
-        expert_answer = f"## Expert Answer:\nThe expert gave the following response and reasoning:\nExpert answer: {state['expert_answer']}\nExpert reasoning: {state['expert_reasoning']}\n\n"
-        user_question = "## User Question:\nDoes the expert's answer actually answer the question to a satisfactory level? If yes, approve. If no, reject."
-
         message = compose_agent_message(
             sender= "orchestrator",
             receiver= "critic_expert",
             type= "instruction",
-            content= question + context + expert_answer + user_question,
+            content= orchestrator_msg_to_critic_expert.format(question=state["question"], research_results=state["research_results"], expert_answer=state["expert_answer"], expert_reasoning=state["expert_reasoning"]),
         )
     
     elif state["current_step"] == "finalizer":
-        message = compose_agent_message(
-            sender= "orchestrator",
-            receiver= "finalizer",
-            type= "instruction",
-            content= "Generate the final answer and reasoning trace (logical steps) to answer the question.",
-        )
+        if state["retry_failed"]:
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "finalizer",
+                type= "instruction",
+                content= orchestrator_msg_to_finalizer_retry_failed,
+            )
+        else:
+            message = compose_agent_message(
+                sender= "orchestrator",
+                receiver= "finalizer",
+                type= "instruction",
+                content= orchestrator_msg_to_finalizer.format(question=state["question"], research_steps=state["research_steps"], expert_steps=state["expert_steps"], expert_answer=state["expert_answer"], expert_reasoning=state["expert_reasoning"]),
+            )
     
     else:
         raise ValueError(f"Invalid current step: {state['current_step']}")
@@ -763,6 +958,7 @@ def execute_next_step(state: GraphState) -> GraphState:
     send_message(state, message)
     return state
 
+@track
 def orchestrator(state: GraphState) -> GraphState:
     """Orchestrator logic to coordinate the multi-agent workflow.
     Follows the 4-step process outlined in the logical design:
@@ -827,8 +1023,7 @@ def route_from_orchestrator(state: GraphState) -> str:
 
 def create_planner_agent(config: AgentConfig, llm_planner: ChatOpenAI) -> Callable[[GraphState], GraphState]:
     """Create a planner agent function with the given prompt and LLM."""
-    #llm_planner.with_structured_output(output_schema, method="json_mode").
-    #output_schema = {"research_steps": list[str], "expert_steps": list[str]}
+    #@track
     def planner_agent(state: GraphState) -> GraphState:
         """Planner agent with injected prompt."""
         logger.info("Planner starting execution")
@@ -861,9 +1056,7 @@ def create_planner_agent(config: AgentConfig, llm_planner: ChatOpenAI) -> Callab
    
 def create_researcher_agent(config: AgentConfig, compiled_researcher_graph:Callable) -> Callable[[GraphState], GraphState]:
     """Create a researcher agent function with the given prompt and LLM."""
-    # Create the researcher subgraph with the injected prompt
-     #compiled_researcher_graph = create_researcher_subgraph(researcher_prompt, llm_researcher_with_tools, research_tools)
-    
+    #@track
     def researcher_agent(state: GraphState) -> GraphState:
         """Researcher agent with injected prompt."""
         logger.info("Researcher starting execution")
@@ -918,9 +1111,8 @@ def create_researcher_agent(config: AgentConfig, compiled_researcher_graph:Calla
 
 def create_expert_agent(config: AgentConfig, compiled_expert_graph:Callable) -> Callable[[GraphState], GraphState]:
     """Create an expert agent function with the given prompt and LLM."""
-    # Create the expert subgraph with the injected prompt
-    #compiled_expert_graph = create_expert_subgraph(expert_prompt, llm_expert_with_tools, expert_tools)
-    
+
+    #@track
     def expert_agent(state: GraphState) -> GraphState:
         """Expert agent with injected prompt."""
         logger.info("Expert starting execution")
@@ -949,14 +1141,14 @@ def create_expert_agent(config: AgentConfig, compiled_expert_graph:Callable) -> 
         
         # Store response in ExpertState in case of text JSON response
         expert_state["expert_answer"] = response["expert_answer"]
-        expert_state["expert_reasoning"] = response["expert_reasoning"]
+        expert_state["expert_reasoning"] = response["reasoning_trace"]
 
         # Update ExpertState in state
         state["expert_state"] = expert_state
 
         # Store results
         state["expert_answer"] = response["expert_answer"]
-        state["expert_reasoning"] = response["expert_reasoning"]
+        state["expert_reasoning"] = response["reasoning_trace"]
         
         agent_message = compose_agent_message(
             sender= "expert",
@@ -975,9 +1167,10 @@ def create_expert_agent(config: AgentConfig, compiled_expert_graph:Callable) -> 
 
 def create_critic_agent(config: AgentConfig, llm_critic: ChatOpenAI) -> Callable[[GraphState], GraphState]:
     """Create a critic agent function with the given prompts for different critic types."""
+    #@track
     def critic_agent(state: GraphState) -> GraphState:
         """Critic agent with injected prompts for different critic types."""
-        logger.info("Critic starting execution")
+        logger.info(f"Critic starting execution - {state['current_step']}")
 
 
         # Determine which critic to run and get the appropriate prompt
@@ -1027,6 +1220,7 @@ def create_critic_agent(config: AgentConfig, llm_critic: ChatOpenAI) -> Callable
 
 def create_finalizer_agent(config: AgentConfig, llm_finalizer: ChatOpenAI) -> Callable[[GraphState], GraphState]:
     """Create a finalizer agent function with the given prompt and LLM."""
+    #@track
     def finalizer_agent(state: GraphState) -> GraphState:
         """Finalizer agent with injected prompt."""
         logger.info("Finalizer starting execution")
@@ -1056,7 +1250,7 @@ def create_finalizer_agent(config: AgentConfig, llm_finalizer: ChatOpenAI) -> Ca
     return finalizer_agent
 
 
-def openai_llm_factory(model: str, temperature: float, output_schema: dict) -> ChatOpenAI:
+def openai_llm_factory(name:str, model: str, temperature: float, output_schema: dict = None, tools: list = None) -> ChatOpenAI:
     """Create an OpenAI LLM with the given model and temperature.
 
     Args:
@@ -1065,11 +1259,14 @@ def openai_llm_factory(model: str, temperature: float, output_schema: dict) -> C
         output_schema (dict): The output schema to use (JSON schema)
     """
     llm = ChatOpenAI(model=model, temperature=temperature)
-    llm = llm.with_structured_output(output_schema, method="json_mode")
+    if tools:
+        llm = llm.bind_tools(tools)
+    if output_schema and name not in ("researcher", "expert"):
+        llm = llm.with_structured_output(output_schema, method="json_mode")
     return llm
 
 
-def llm_factory(config:AgentConfig) -> ChatOpenAI:
+def llm_factory(config:AgentConfig, tools: list = None) -> ChatOpenAI:
     """Get the appropriate LLM factory based on the provider.
 
     Args:
@@ -1079,12 +1276,12 @@ def llm_factory(config:AgentConfig) -> ChatOpenAI:
         ChatOpenAI: The LLM with structured output
     """
     if config.provider == "openai":
-        return openai_llm_factory(config.model, config.temperature, config.output_schema)
+        return openai_llm_factory(config.name, config.model, config.temperature, config.output_schema, tools)
     else:
         raise ValueError(f"Invalid provider: {config.provider}")
 
 
-def create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> StateGraph:
+def create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> Tuple[StateGraph, OpikTracer]:
     """
     Factory function that creates and compiles a multi-agent graph with injected prompts.
     
@@ -1094,23 +1291,22 @@ def create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> StateGrap
     Returns:
         Compiled graph ready for invocation
     """
+    # Define Agent Tools
+    research_tools = asyncio.run(get_research_tools())
+    expert_tools = get_expert_tools()
 
     # Create LLMs dynamically
     llm_planner = llm_factory(agent_configs["planner"])
-    llm_researcher = llm_factory(agent_configs["researcher"])
-    llm_expert = llm_factory(agent_configs["expert"])
+    llm_researcher = llm_factory(agent_configs["researcher"], research_tools)
+    llm_expert = llm_factory(agent_configs["expert"], expert_tools)
     llm_critic = llm_factory(agent_configs["critic"])
     llm_finalizer = llm_factory(agent_configs["finalizer"])   
    
-    # Create Researcher Subgraphs
-    research_tools = asyncio.run(get_research_tools())
-    llm_researcher = llm_researcher.bind_tools(research_tools)
-    researcher_node = create_researcher_llm_node(agent_configs["researcher"], llm_researcher, research_tools)
+    # Create Researcher Subgraphs    
+    researcher_node = create_researcher_llm_node(agent_configs["researcher"], llm_researcher)
     researcher_graph = create_researcher_subgraph(researcher_node, research_tools)
     
     # Create Expert Subgraphs
-    expert_tools = get_expert_tools()
-    llm_expert = llm_expert.bind_tools(expert_tools)
     expert_node = create_expert_llm_node(agent_configs["expert"], llm_expert)
     expert_graph = create_expert_subgraph(expert_node, expert_tools)
 
@@ -1153,4 +1349,9 @@ def create_multi_agent_graph(agent_configs: dict[str, AgentConfig]) -> StateGrap
         )
     
     # Compile and return the graph
-    return builder.compile()
+    app = builder.compile()
+
+    # Create the OpikTracer for LangGraph
+    opik_tracer = OpikTracer(graph=app.get_graph(xray=True))
+    
+    return app, opik_tracer

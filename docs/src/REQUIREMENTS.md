@@ -72,7 +72,7 @@ The system must answer GAIA Level 1 questions efficiently and reliably. GAIA Lev
 - **REQ-041**: The system shall search the internet for relevant information when needed
 - **REQ-042**: The system shall access Wikipedia articles for factual information
 - **REQ-043**: The system shall extract transcripts from YouTube videos when relevant
-- **REQ-044**: The system shall read and process various file formats (PDF, Excel, PowerPoint)
+- **REQ-044**: The system shall read and process various file formats (PDF, Excel, PowerPoint, text)
 - **REQ-045**: The system shall synthesize information from multiple sources
 - **REQ-046**: The system shall execute research steps sequentially and systematically
 

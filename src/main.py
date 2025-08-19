@@ -3,9 +3,9 @@ import time
 import os
 import logging
 from multi_agent_system import create_multi_agent_graph, AgentConfig
-from langchain_core.messages import HumanMessage
 from typing import Literal
 import sys
+import uuid
 
 # Configure logging at the entry point
 logging.basicConfig(
@@ -138,7 +138,7 @@ def make_agent_configs(prompts: dict) -> dict[str, AgentConfig]:
     """
     logger.info("Creating agent configurations...")
     configs = {
-        "planner": AgentConfig(name="planner", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"research_steps": list[str], "expert_steps": list[str]}, system_prompt=prompts["planner"], retry_limit=3),
+        "planner": AgentConfig(name="planner", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"research_steps": list[str], "expert_steps": list[str]}, system_prompt=prompts["planner"], retry_limit=5),
         "researcher": AgentConfig(name="researcher", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"result": str}, system_prompt=prompts["researcher"], retry_limit=5),
         "expert": AgentConfig(name="expert", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"expert_answer": str, "reasoning_trace": str}, system_prompt=prompts["expert"], retry_limit=5),
         "critic": AgentConfig(name="critic", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"decision": Literal["approve", "reject"], "feedback": str}, system_prompt={"critic_planner":prompts["critic_planner"], "critic_researcher":prompts["critic_researcher"], "critic_expert":prompts["critic_expert"]}, retry_limit=None),
@@ -153,6 +153,10 @@ def main() -> None:
     Main function to run the application.
     """
     try:
+        # Configure Opik for real-time flushing
+        from opik import configure
+        configure(use_local=True)
+
         logger.info("Application started")
         
         # Load baseline prompts
@@ -163,36 +167,51 @@ def main() -> None:
         
         # Create the multi-agent graph using the factory function
         logger.info("Creating multi-agent graph...")
-        graph = create_multi_agent_graph(agent_configs)
+        graph, opik_tracer = create_multi_agent_graph(agent_configs)
         logger.info("Graph created successfully!")
         
-        jsonl_file_path = "/home/joe/python-proj/hf-agents-course/src/metadata.jsonl"
+        jsonl_file_path = "/home/joe/python-proj/hf-ai-agents-course/src/hello_world.jsonl"
         
         responses = []
         logger.info("Starting to process JSONL file...")
-
         for item in read_jsonl_file(jsonl_file_path):
             if item["Level"] == 1:
                 logger.info(f"Processing question: {item["Question"]}")
+                # Generate unique thread_id for each iteration
+                thread_id = str(uuid.uuid4())
+                # Configure with unique thread_id
+                config = {
+                    "callbacks": [opik_tracer],
+                    "configurable": {"thread_id": thread_id},
+                    "recursion_limit": 100
+                }
+                
                 if item["file_name"] != "":
                     file_path = f"/home/joe/datum/gaia_lvl1/{item['file_name']}"
                 else:
                     file_path = ""
-                result = graph.invoke({"question": item["Question"], "file_path": file_path})
-                response = {"task_id": item["task_id"], "model_answer": result["final_answer"], "reasoning_trace": result["reasoning_trace"]}
+                result = graph.invoke({"question": item["Question"], "file": file_path}, config=config)
+                response = {"task_id": item["task_id"], "model_answer": result["final_answer"], "reasoning_trace": result["final_reasoning_trace"], "thread_id": thread_id}
 
                 responses.append(response)
                 logger.info(f"Completed question: {item["Question"]}")
+                # Flush traces after each question
+                opik_tracer.flush()
                 time.sleep(5)
 
         logger.info("Writing responses to output file...")
-        write_jsonl_file(responses, "/home/joe/python-proj/hf-agents-course/src/gaia_lvl1_responses.jsonl")
+        write_jsonl_file(responses, "/home/joe/python-proj/hf-ai-agents-course/src/gaia_lvl1_responses.jsonl")
         logger.info("Application finished successfully")
-    except Exception as e:
-        logger.error(f"Application failed: {str(e)}")
-        print(f"Application failed: {str(e)}")
-        sys.exit(1)
+        # Ensure all traces are logged before exiting
 
-# Example usage:
+    except Exception as e:
+        # Ensure all traces are logged before exiting
+        try:
+            opik_tracer.flush()
+        finally:
+            logger.error(f"Application failed: {str(e)}")
+            print(f"Application failed: {str(e)}")
+            sys.exit(1)
+
 if __name__ == "__main__":
     main()

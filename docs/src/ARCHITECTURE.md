@@ -91,6 +91,9 @@ The system answers GAIA Level 1 questions through a coordinated workflow of spec
 - Provide traceable reasoning for all answers
 - Handle errors gracefully with retry logic and quality control
 - Return complete graph state with final answers and reasoning traces
+- Provide comprehensive observability and tracing for all system operations
+- Enable real-time monitoring and debugging of complex workflows
+- Support performance analysis and optimization through detailed execution traces
 
 **System Limitations:**
 - No persistent storage between requests (privacy-focused design)
@@ -113,19 +116,22 @@ The multi-agent system is designed to answer GAIA Level 1 questions, which are c
 - Synthesizing information from multiple sources
 
 **Graph Compilation and Invocation Pattern:**
-When used via the entry point, the multi-agent system follows a specific compilation and invocation pattern:
-- **Single Graph Compilation**: The workflow graph is compiled once during system initialization
+When used via the entry point, the multi-agent system follows a specific compilation and invocation pattern with comprehensive observability:
+- **Single Graph Compilation**: The workflow graph is compiled once during system initialization with OpikTracer integration
 - **Configuration Supply**: Entry point supplies graph configuration and prompts to the multi-agent system factory
 - **Factory Processing**: Factory processes configuration contents and sets appropriate values in the graph
 - **Prompt Injection**: Factory injects prompts when building and compiling the graph
-- **Per-Question Invocation**: The compiled graph is invoked once per question to be answered
+- **Observability Setup**: Factory creates OpikTracer with graph integration for comprehensive monitoring
+- **Per-Question Invocation**: The compiled graph is invoked once per question to be answered with unique thread_id
 - **Isolated Graph State**: Each question has its own isolated graph state when the graph is invoked
+- **Thread-Based Tracing**: Each question processing iteration uses a unique thread_id for isolated trace analysis
 - **Batch Processing**: When the entry point script iterates through multiple questions, a new graph state is created for each question
 - **Single Question Per Run**: A single graph run will answer only one question
 - **No State Crossing**: There will never be any crossing of questions in the same state - each question maintains complete isolation
 - **Graph State Return**: After each graph run, the entry point receives the complete graph state containing all workflow information
 - **Output Extraction**: The entry point extracts the final answer and reasoning trace from the returned graph state
 - **Batch Results Storage**: Extracted answers and reasoning traces are stored in batch result files for all processed questions
+- **Trace Management**: Real-time trace flushing after each question processing iteration
 
 **Why the System Exists:**
 The system employs a multi-agent approach to break down complex reasoning problems into specialized tasks:
@@ -164,7 +170,8 @@ The system integrates with multiple external services and tools:
 **High-Level Technology Stack:**
 - **LangGraph**: Graph-based workflow orchestration and state management
 - **LangChain**: Multi-agent framework for LLM integration and tool management
-- **Python Standard Library Logging**: Simple logging framework for observability and traceability
+- **Python Standard Library Logging**: Comprehensive logging framework for observability and traceability
+- **Opik Framework**: Advanced observability and tracing framework for system monitoring
 - **Python 3.10+**: Runtime environment and language features
 
 **Key Architectural Approach:**
@@ -178,8 +185,9 @@ The system uses **graph-based workflow orchestration** with **multi-agent coordi
 - **ReAct Pattern**: Iterative reasoning and action loops for complex problem solving
 - **Modular Agent Architecture**: Hierarchical workflow components for complex agent logic isolation
 - **Message Passing**: Inter-agent communication through structured messages
-- **Factory Pattern**: Dynamic agent creation with injected configuration
+- **Factory Pattern**: Dynamic agent creation with injected configuration and observability integration
 - **Orchestrator Pattern**: Centralized workflow control with state machine logic
+- **Observability Pattern**: Comprehensive tracing and monitoring with thread-based isolation
 
 **External Dependencies:**
 - **LLM Services**: OpenAI GPT-4o (primary reasoning), GPT-4o-mini (research/expert tasks)
@@ -189,13 +197,17 @@ The system uses **graph-based workflow orchestration** with **multi-agent coordi
 - **File Processing**: Document readers for PDF, Excel, PowerPoint formats
 - **Browser Tools**: MCP tools for web automation and interaction
 - **Media Services**: YouTube API for video transcript extraction
+- **Observability Services**: Opik framework for advanced tracing and monitoring
 
 **Integration Architecture:**
 - **API Integration**: REST APIs for external services with rate limiting and error handling
 - **Tool Framework**: LangChain tool framework for safe tool execution
 - **Configuration Management**: Environment variables for API keys and settings
 - **Error Handling**: Comprehensive error handling with retry logic and fail-fast termination
-- **Logging Integration**: Python standard library logging for basic observability and debugging
+- **Logging Integration**: Python standard library logging for comprehensive observability and debugging
+- **Observability Integration**: Opik framework integration for advanced tracing and monitoring capabilities
+- **Thread Management**: Unique thread_id generation and management for isolated trace analysis
+- **Trace Management**: Real-time trace flushing and monitoring for operational oversight
 
 
 ### 1.5 Diagrams
@@ -390,7 +402,7 @@ graph TB
 
 ### 2.1 Core Design Patterns
 
-The multi-agent system employs six core design patterns that work together to create a robust, maintainable, and extensible architecture.
+The multi-agent system employs seven core design patterns that work together to create a robust, maintainable, extensible, and observable architecture.
 
 **Multi-Agent System Pattern:**
 - **Purpose**: Decompose complex problems into specialized, autonomous agents
@@ -399,10 +411,10 @@ The multi-agent system employs six core design patterns that work together to cr
 - **Usage**: Applied to complex reasoning tasks requiring multiple capabilities and coordinated problem solving
 
 **Factory Pattern:**
-- **Purpose**: Dynamic agent creation and configuration injection
-- **Implementation**: Factory function constructs the agent graph with injected prompts and configuration
-- **Benefits**: Enables prompt injection, flexible agent configuration, and rapid experimentation
-- **Usage**: Main entry point uses factory to build agent workflow graph with runtime configuration
+- **Purpose**: Dynamic agent creation and configuration injection with observability integration
+- **Implementation**: Factory function constructs the agent graph with injected prompts, configuration, and OpikTracer integration
+- **Benefits**: Enables prompt injection, flexible agent configuration, rapid experimentation, and comprehensive observability
+- **Usage**: Main entry point uses factory to build agent workflow graph with runtime configuration and tracing capabilities
 
 **Orchestrator Pattern:**
 - **Purpose**: Centralized workflow control with state machine logic
@@ -427,6 +439,12 @@ The multi-agent system employs six core design patterns that work together to cr
 - **Implementation**: Agents communicate through structured AgentMessage objects via orchestrator
 - **Benefits**: Decoupled communication, structured data exchange, and clear interfaces
 - **Usage**: All agent communication flows through orchestrator using standardized message protocol
+
+**Observability Pattern:**
+- **Purpose**: Comprehensive tracing and monitoring of system operations and execution flows
+- **Implementation**: OpikTracer integration with LangGraph, @track decorators for function-level tracing, and thread-based isolation
+- **Benefits**: Complete visibility into system behavior, detailed debugging capabilities, performance analysis, and real-time monitoring
+- **Usage**: Graph execution tracking, agent function monitoring, tool usage analysis, and performance optimization
 
 **Required Diagrams**: None (covered by Graph-Based Architecture Diagram in 2.4)
 
@@ -483,7 +501,8 @@ The system architecture is designed to achieve specific quality attributes that 
 - **Clear Interfaces**: Standardized message protocols and component interfaces
 - **Documentation**: Comprehensive architectural documentation and code comments
 - **Consistent Patterns**: Uniform use of design patterns throughout the system
-- **Simple Logging**: Python standard library logging provides basic logging patterns and debugging capabilities across all components
+- **Comprehensive Logging**: Python standard library logging provides comprehensive logging patterns and debugging capabilities across all components
+- **Advanced Observability**: Opik framework integration provides advanced tracing and monitoring capabilities for detailed system analysis
 
 **Extensibility:**
 - **Plugin Architecture**: Easy addition of new tools and capabilities
@@ -491,6 +510,7 @@ The system architecture is designed to achieve specific quality attributes that 
 - **Tool Integration**: Standardized tool framework for external service integration
 - **Subgraph Patterns**: Modular subgraphs enable complex agent logic extension
 - **Message Protocol**: Extensible message structure for new communication patterns
+- **Observability Extension**: Extensible tracing and monitoring capabilities for new components and workflows
 
 **Testability:**
 - **Component Isolation**: Individual agents can be tested in isolation
@@ -498,6 +518,8 @@ The system architecture is designed to achieve specific quality attributes that 
 - **Pure Logic Separation**: Business logic separated from external dependencies
 - **State Management**: Centralized state enables comprehensive testing scenarios
 - **Error Scenarios**: Built-in error handling supports testing of failure modes
+- **Observability Integration**: Comprehensive tracing enables detailed testing and debugging
+- **Performance Testing**: Detailed execution traces support performance testing and optimization
 
 **Performance:**
 - **Graph-Based Execution**: Efficient workflow orchestration through LangGraph
@@ -505,6 +527,8 @@ The system architecture is designed to achieve specific quality attributes that 
 - **Tool Optimization**: Efficient tool selection and execution patterns
 - **Sequential Execution**: Sequential processing ensures API rate limit compliance
 - **Resource Management**: Proper cleanup and resource management
+- **Observability Overhead**: Minimal performance impact from comprehensive tracing and monitoring
+- **Performance Monitoring**: Real-time performance analysis and optimization insights
 
 
 ### 2.4 System Architecture Overview
@@ -559,33 +583,56 @@ The system consists of a main graph with all agents, where complex agents use su
 - **State Synchronization**: Main graph nodes manage state synchronization when invoking their respective subgraphs
 
 
-### 2.5 Logging Architecture
+### 2.5 Logging and Observability Architecture
 
-The system uses Python's standard library logging for simple, consistent logging across all components.
+The system implements a comprehensive logging and observability architecture that combines Python's standard library logging with advanced Opik framework integration for complete system monitoring and debugging capabilities.
 
-**Logging Configuration:**
-- **Basic Configuration**: Standard logging setup with INFO level and timestamp format
-- **Single Logger**: All components use the same logger instance from the main module
-- **Log Format**: Standard format with timestamp, logger name, level, and message
-- **Log Levels**: INFO for normal operations, WARNING for issues, ERROR for failures
+**Logging Architecture:**
+- **Dual Output Configuration**: Standard logging setup with both file and console handlers
+- **Comprehensive Log Levels**: INFO, WARNING, ERROR, and DEBUG levels for detailed monitoring
+- **Persistent Storage**: Log files stored for analysis and troubleshooting
+- **Component Identification**: Detailed logging format with timestamps, logger names, and component identification
+- **Error Tracking**: Comprehensive error logging with detailed context and stack traces
 
 **Logging Implementation:**
-- **Entry Point**: Standard library logging in main.py covering entire run (entry point + multi-agent system)
-- **Multi-Agent System**: Comprehensive logging throughout all components using Python standard library
-- **Component Logging**: Each agent and component logs start/completion and errors
-- **Error Logging**: Detailed error messages with component identification
-- **State Validation**: Logging for state validation failures and warnings
+- **Entry Point**: Comprehensive logging in main.py covering entire application lifecycle
+- **Multi-Agent System**: Detailed logging throughout all components and workflow steps
+- **Component Logging**: Each agent and component logs start/completion, errors, and state transitions
+- **Error Logging**: Detailed error messages with component identification and context
+- **State Validation**: Logging for state validation failures, warnings, and workflow progression
 
 **Logging Patterns:**
 - **Start/Completion**: Each component logs when it starts and completes execution
-- **Error Handling**: All errors are logged with detailed error messages
-- **Workflow Progression**: Orchestrator logs workflow state transitions
+- **Error Handling**: All errors are logged with detailed error messages and context
+- **Workflow Progression**: Orchestrator logs workflow state transitions and decision points
+- **Performance Monitoring**: Execution time and performance metrics logging
 
 **Logging Benefits:**
-- **Debugging**: Simple text logs enable easy debugging and troubleshooting
-- **Monitoring**: Basic operational monitoring through log output
-- **Error Tracking**: Comprehensive error logging for failure analysis
-- **Standard Library**: No external dependencies, uses Python's built-in logging
+- **Debugging**: Comprehensive text logs enable detailed debugging and troubleshooting
+- **Monitoring**: Advanced operational monitoring through persistent log storage
+- **Error Tracking**: Complete error logging for failure analysis and resolution
+- **Performance Analysis**: Execution time and performance metrics for optimization
+
+**Opik Observability Architecture:**
+- **LangGraph Integration**: OpikTracer provides complete graph execution flow tracking
+- **Function-Level Tracing**: @track decorators enable detailed function execution monitoring
+- **Thread-Based Tracing**: Unique thread_id per question enables isolated trace analysis
+- **Real-Time Monitoring**: Live trace flushing and monitoring capabilities
+- **Execution Analysis**: Comprehensive execution flow analysis and debugging
+
+**Observability Implementation:**
+- **Graph Execution Tracking**: Complete tracking of all graph nodes and edge traversals
+- **Agent Function Monitoring**: Detailed monitoring of all agent function executions
+- **Tool Usage Analysis**: Comprehensive tracking of tool usage and performance
+- **State Change Monitoring**: Real-time monitoring of state transitions and updates
+- **Performance Profiling**: Detailed performance analysis and optimization insights
+
+**Observability Benefits:**
+- **Advanced Debugging**: Detailed execution traces enable complex debugging scenarios
+- **Performance Optimization**: Comprehensive performance analysis and bottleneck identification
+- **System Understanding**: Complete visibility into system behavior and execution patterns
+- **Real-Time Monitoring**: Live monitoring capabilities for operational oversight
+- **Trace Analysis**: Detailed analysis of execution flows and decision patterns
 
 ### 2.6 Diagrams
 **Diagram 2.1: Level 2 System Context Diagram -- Multi-Agent System Architecture** - Technical view showing subgraph patterns
@@ -675,15 +722,16 @@ graph TB
 
 **Related Sections**: Sections 3, 4, 5, 6, 7, 8 (referenced by components, technology, state management, configuration, error handling, and decisions sections)
 
-**Section Summary**: This section covers the fundamental architecture principles and patterns that form the foundation of the multi-agent system, providing the conceptual framework for understanding all subsequent sections.
+**Section Summary**: This section covers the fundamental architecture principles and patterns that form the foundation of the multi-agent system, providing the conceptual framework for understanding all subsequent sections, including comprehensive observability and monitoring capabilities.
 
 **Key Takeaways**:
-- 6 core design patterns (Multi-Agent System, Factory, Orchestrator, ReAct, Subgraph Patterns, Message Passing) work together to create a robust architecture
-- Key architectural decisions balance simplicity, maintainability, and functionality with clear rationale for each choice
+- 7 core design patterns (Multi-Agent System, Factory, Orchestrator, ReAct, Subgraph Patterns, Message Passing, Observability) work together to create a robust architecture
+- Key architectural decisions balance simplicity, maintainability, functionality, and observability with clear rationale for each choice
 - Quality attributes (reliability, maintainability, extensibility, testability, performance) are achieved through specific architectural mechanisms
 - Graph-based architecture with subgraph patterns enables complex workflow orchestration and tool integration
 - **Node vs Agent Architecture**: Clear distinction between main graph nodes (orchestration/management) and subgraph agents (task execution)
-- **Simple Logging Architecture**: Python standard library logging provides basic observability and debugging capabilities across all components
+- **Comprehensive Logging and Observability Architecture**: Python standard library logging provides comprehensive observability and debugging capabilities, while Opik framework integration enables advanced tracing and monitoring across all components
+- **Thread-Based Tracing**: Unique thread_id per question enables isolated trace analysis and comprehensive debugging capabilities
 
 ---
 
@@ -727,12 +775,14 @@ The system follows a hierarchical architecture with clear component boundaries:
 - **Finalizer Agent**: Answer synthesis and reasoning trace compilation
 
 **Overall System Architecture from Component Perspective:**
-The system architecture emphasizes modularity, clear interfaces, and centralized control:
+The system architecture emphasizes modularity, clear interfaces, centralized control, and comprehensive observability:
 - **Modular Design**: Each component has well-defined responsibilities and interfaces
 - **Clear Interfaces**: Standardized message protocols and component contracts
 - **Centralized Control**: Orchestrator manages workflow and component coordination
 - **Quality Integration**: Critic agent provides feedback at each workflow step
 - **Tool Integration**: External tools are integrated through specialized subgraphs
+- **Observability Integration**: Comprehensive tracing and monitoring across all components and workflows
+- **Logging Integration**: Standardized logging patterns for debugging and error tracking
 
 **Required Diagrams**: None (covered by Graph-Based Architecture Diagram in 2.4)
 
@@ -747,18 +797,24 @@ The system architecture emphasizes modularity, clear interfaces, and centralized
 | **Expert Agent** | Synthesizes final answer | Follows expert steps, performs calculations, generates reasoning | Calculator, unit converter, Python REPL |
 | **Critic Agent** | Quality control | Reviews outputs, provides feedback, makes approve/reject decisions | None (pure LLM evaluation) |
 | **Finalizer Agent** | Produces final answer and reasoning trace | Synthesizes information, formats output, compiles reasoning trace | None (pure LLM synthesis) |
+| **OpikTracer** | Observability and tracing | Graph execution tracking, function monitoring, performance analysis | Opik framework integration |
+| **Logging System** | Comprehensive logging | Error tracking, debugging, performance monitoring | Python standard library logging |
 
 **Component Interfaces and Interaction Patterns:**
 - **Orchestrator Interface**: Central message routing and workflow control
 - **Agent Interfaces**: Standardized message protocols for instruction and response
 - **Subgraph Interfaces**: Tool integration and state management for complex agents
 - **Critic Interface**: Quality assessment and feedback generation
+- **Observability Interface**: Comprehensive tracing and monitoring through OpikTracer integration
+- **Logging Interface**: Standardized logging patterns across all components
 
 **Component Relationships and Dependencies:**
 - **Orchestrator Dependencies**: All agents depend on orchestrator for workflow control
 - **Agent Dependencies**: Agents depend on orchestrator for message routing and state management
 - **Subgraph Dependencies**: Researcher and Expert agents depend on subgraphs for tool interaction
 - **Tool Dependencies**: Researcher and Expert agents depend on external tools for capabilities
+- **Observability Dependencies**: All components depend on OpikTracer for comprehensive tracing and monitoring
+- **Logging Dependencies**: All components depend on Python standard library logging for debugging and error tracking
 
 **Required Diagrams**: None (text-based table)
 
@@ -1171,7 +1227,7 @@ Complex agents use subgraphs with specific communication patterns:
 
 **Related Sections**: Sections 4, 5, 6, 7, 8 (referenced by technology stack, state management, configuration, error handling, and decisions sections)
 
-**Section Summary**: This section covers the core components and workflow of the multi-agent system, describing the specialized agents, orchestrator, workflow patterns, and component interaction mechanisms that enable coordinated question answering.
+**Section Summary**: This section covers the core components and workflow of the multi-agent system, describing the specialized agents, orchestrator, workflow patterns, component interaction mechanisms, and observability integration that enable coordinated question answering with comprehensive monitoring.
 
 **Key Takeaways**:
 - Specialized agent components (Planner, Researcher, Expert, Critic, Finalizer) work together through centralized orchestrator control
@@ -1179,6 +1235,8 @@ Complex agents use subgraphs with specific communication patterns:
 - Subgraph patterns for complex agents (Researcher, Expert) provide tool interaction and state management capabilities
 - Structured message protocols and centralized routing ensure reliable communication between components
 - Quality control integration through critic agent at each workflow step improves answer quality and reliability
+- Comprehensive observability integration through OpikTracer and logging systems enables detailed monitoring and debugging
+- Thread-based tracing enables isolated analysis of complex multi-agent workflows
 
 ---
 
@@ -1221,15 +1279,27 @@ The multi-agent system is built on a foundation of modern Python frameworks and 
 - **Usage**: State validation, message validation, configuration validation
 - **Benefits**: Ensures data integrity, catches errors early, improves system reliability
 
-**Python Standard Library Logging: Simple Logging and Observability**
-- **Purpose**: Simple logging framework for basic observability and traceability
+**Python Standard Library Logging: Comprehensive Logging and Observability**
+- **Purpose**: Comprehensive logging framework for observability, traceability, and debugging
 - **Key Features**:
-  - Standard Python logging with configurable log levels
-  - Simple text-based log output with timestamps
-  - Basic error, warning, and info level logging
-  - Standard logging format with component identification
-- **Usage**: Entry point logging, multi-agent system logging, error tracking
-- **Benefits**: Simple implementation, standard Python library, basic debugging capabilities
+  - Standard Python logging with configurable log levels (INFO, WARNING, ERROR, DEBUG)
+  - Dual output logging with both file and console handlers
+  - Detailed logging format with timestamps, logger names, and component identification
+  - Comprehensive error tracking and debugging capabilities
+  - Log file persistence for analysis and troubleshooting
+- **Usage**: Entry point logging, multi-agent system logging, error tracking, debugging
+- **Benefits**: Robust implementation, standard Python library, comprehensive debugging capabilities, persistent log storage
+
+**Opik Observability Framework: Advanced Tracing and Monitoring**
+- **Purpose**: Advanced observability and tracing framework for multi-agent system monitoring
+- **Key Features**:
+  - LangGraph integration with OpikTracer for complete graph execution tracking
+  - Function-level tracing with @track decorators
+  - Thread-based tracing with unique thread_id per question processing
+  - Real-time trace flushing and monitoring
+  - Comprehensive execution flow analysis and debugging
+- **Usage**: Graph execution tracking, agent function monitoring, tool usage analysis, performance monitoring
+- **Benefits**: Advanced observability, detailed execution analysis, real-time monitoring, comprehensive debugging capabilities
 
 **Python 3.10+: Runtime Environment and Language Features**
 - **Purpose**: Runtime environment and language features
@@ -1240,6 +1310,17 @@ The multi-agent system is built on a foundation of modern Python frameworks and 
   - Rich standard library and ecosystem
 - **Usage**: System implementation, tool execution, external API integration
 - **Benefits**: Modern language features, extensive ecosystem, developer productivity
+
+**Opik Framework: Advanced Observability and Tracing**
+- **Purpose**: Advanced observability and tracing framework for comprehensive system monitoring
+- **Key Features**:
+  - LangGraph integration with OpikTracer for complete graph execution tracking
+  - Function-level tracing with @track decorators
+  - Thread-based tracing with unique thread_id per question processing
+  - Real-time trace flushing and monitoring capabilities
+  - Comprehensive execution flow analysis and debugging
+- **Usage**: Graph execution tracking, agent function monitoring, tool usage analysis, performance monitoring
+- **Benefits**: Advanced observability, detailed execution analysis, real-time monitoring, comprehensive debugging capabilities
 
 
 ### 4.2 LLM Integration
@@ -1379,13 +1460,15 @@ The tool integration architecture provides:
 
 **Related Sections**: Sections 5, 6, 7, 8 (referenced by state management, configuration, error handling, and decisions sections)
 
-**Section Summary**: This section covers the technology stack and external dependencies of the multi-agent system, describing the technologies and tools that enable the system's capabilities.
+**Section Summary**: This section covers the technology stack and external dependencies of the multi-agent system, describing the technologies and tools that enable the system's capabilities, including comprehensive observability and monitoring.
 
 **Key Takeaways**:
 - Core frameworks (LangGraph, LangChain, Pydantic) provide robust workflow orchestration, LLM integration, and data validation
 - LLM integration with GPT-4o and GPT-4o-mini enables reasoning, generation, and evaluation capabilities
 - External tools and their integration patterns support research, calculation, and information processing
 - Tool execution environment and safety mechanisms ensure reliable and secure operation
+- Opik framework integration provides advanced observability and tracing capabilities for comprehensive system monitoring
+- Thread-based tracing enables isolated analysis and debugging of complex multi-agent workflows
 
 ---
 
@@ -1789,19 +1872,21 @@ The system uses a factory pattern to dynamically construct the multi-agent workf
 **Factory Function Responsibilities:**
 - **Configuration Assignment**: Assigns all configuration parameters when constructing the graph
 - **Graph Construction**: Builds the main graph and all subgraphs (Researcher, Expert) based on assigned configuration
-- **Agent Instantiation**: Instantiates each agent's LLM based on the provider and model to use.
+- **Agent Instantiation**: Instantiates each agent's LLM based on the provider and model to use
 - **Prompt Injection**: Loads and injects the correct prompt for each agent, including critic variants, when building the graph
 - **Tool Binding**: Binds the correct set of tools to each agent based on configuration
+- **Observability Integration**: Creates OpikTracer with graph integration for comprehensive monitoring
 - **Validation**: Ensures all required configuration and prompts are present and valid
 
 **Dynamic Graph Creation Flow:**
 1. **Entry Point**: Main script constructs configuration and loads prompts
 2. **Configuration Supply**: Entry point assembles the graph configuration
 3. **Factory Call**: Passes graph configuration to the factory function
-4. **Configuration Assignment**: Factory assigns LLM Provider & Models, temperature, system prompts, output schemas, and retry limits.
+4. **Configuration Assignment**: Factory assigns LLM Provider & Models, temperature, system prompts, output schemas, and retry limits
 5. **Prompt Injection**: Agent System Prompts are injected into agents when building the graph
-6. **Graph Assembly**: Factory creates all agent nodes, subgraphs, and edges based on assigned configuration
-7. **Graph Compilation**: Returns a fully configured, ready-to-run workflow graph
+6. **Observability Setup**: Factory creates OpikTracer with graph integration for comprehensive monitoring
+7. **Graph Assembly**: Factory creates all agent nodes, subgraphs, and edges based on assigned configuration
+8. **Graph Compilation**: Returns a fully configured, ready-to-run workflow graph with OpikTracer integration
 
 **Error Handling:**
 - **Validation Errors**: Missing or invalid configuration/prompt triggers clear errors.
@@ -1839,6 +1924,7 @@ graph TB
     %% Output Components
     subgraph OutputComponents["Output Components"]
         CompiledGraph[Compiled Graph Instance<br/>Ready for execution]
+        OpikTracer[OpikTracer Instance<br/>Observability integration]
     end
     
     %% Factory Pattern Flow
@@ -1857,6 +1943,7 @@ graph TB
     LLMCreation --> CompiledGraph
     AgentCreation --> CompiledGraph
     GraphAssembly --> CompiledGraph
+    GraphAssembly --> OpikTracer
     
     %% Styling - Oceanic/Dark Theme Friendly
     classDef config fill:#7FFFD4,stroke:#00B0FF,stroke-width:2px,color:#000000
@@ -1897,37 +1984,42 @@ The main entry point script is responsible for initializing the system, construc
 - **Configuration Construction**: Constructs configuration with hard-coded retry limits and temperatures
 - **Prompt Loading**: Loads system prompts from external files
 - **Configuration Supply**: Supplies graph configuration and prompts to the multi-agent system factory
-- **Graph Compilation**: Compiles the workflow graph once during system initialization
-- **Graph Invocation**: Invokes the compiled graph once per question with isolated graph state
+- **Observability Setup**: Configures Opik with use_local=True for real-time trace flushing
+- **Graph Compilation**: Compiles the workflow graph once during system initialization with OpikTracer integration
+- **Graph Invocation**: Invokes the compiled graph once per question with isolated graph state and unique thread_id
 - **Graph State Processing**: Receives complete graph state after each graph run containing final answer and reasoning trace
 - **Output Extraction**: Extracts final answer and reasoning trace from returned graph state
 - **Batch Processing**: Processes input questions in batch mode (e.g., from JSONL files) with new graph state per question
-- **Batch Results Storage**: Stores extracted answers and reasoning traces in batch result files
+- **Batch Results Storage**: Stores extracted answers and reasoning traces in batch result files with thread_id tracking
 - **Error Handling**: Handles errors gracefully, logs failures, and ensures system resilience
 - **Output Writing**: Writes answers and reasoning traces to output files in required format
+- **Trace Management**: Manages real-time trace flushing after each question processing iteration
 
 **Batch Processing Features:**
 - **Progress Tracking**: Tracks and logs progress through batch jobs
-- **Question Isolation**: Each question maintains complete isolation with its own graph state
+- **Question Isolation**: Each question maintains complete isolation with its own graph state and unique thread_id
 - **Graph State Return**: Complete graph state returned after each question processing
 - **Output Extraction**: Final answer and reasoning trace extracted from returned graph state
-- **Batch Results Storage**: All extracted outputs stored in consolidated batch result files
+- **Batch Results Storage**: All extracted outputs stored in consolidated batch result files with thread_id tracking
 - **Resource Management**: Manages memory and cleans up resources between questions
+- **Trace Isolation**: Each question processing iteration maintains isolated traces for focused analysis
+- **Real-Time Monitoring**: Live trace flushing and monitoring capabilities for operational oversight
 
 
 **Related Sections**: Sections 7, 8 (referenced by error handling and decisions sections)
 
-**Section Summary**: This section covers the configuration system, factory pattern implementation, prompt management, and entry point/batch processing capabilities of the multi-agent system, describing how the system is configured, instantiated, and deployed for robust operation.
+**Section Summary**: This section covers the configuration system, factory pattern implementation, prompt management, observability integration, and entry point/batch processing capabilities of the multi-agent system, describing how the system is configured, instantiated, and deployed for robust operation with comprehensive monitoring.
 
 **Key Takeaways**:
 - Centralized configuration system specifies parameters and system prompts for the entire graph
 - Configuration is constructed at runtime by entry point and consumed by factory for graph compilation
-- Factory pattern assigns retry limits, temperatures, and prompts to graph definition before compilation
-- Entry point constructs configuration
+- Factory pattern assigns retry limits, temperatures, prompts, and observability integration to graph definition before compilation
+- Entry point constructs configuration and sets up observability with Opik integration
 - Single graph compilation with per-question invocation ensures efficient batch processing
-- Complete question isolation prevents state crossing and maintains privacy
+- Complete question isolation with thread-based tracing prevents state crossing and maintains privacy
 - Clean output interface with graph state return and entry point extraction
-- Entry point and batch processing support scalable, resilient, and automated operation
+- Entry point and batch processing support scalable, resilient, and automated operation with comprehensive monitoring
+- Thread-based tracing enables isolated analysis of complex multi-agent workflows
 
 ### 6.5 Output Interface and Data Flow
 
@@ -2122,69 +2214,89 @@ graph TD
     class GracefulFailure failure
 ```
 
-### 7.3 Logging
+### 7.3 Logging and Observability
 
 **Prerequisites**: Sections 7.1-7.2 (Error Handling & Quality Assurance)  
 **Dependencies**: Referenced by Section 8 (Architectural Decisions)
 
-#### 7.3.1 Logging Strategy Overview
+#### 7.3.1 Logging and Observability Strategy Overview
 
-The system implements a simple logging strategy using Python's standard library logging for basic observability and debugging across the multi-agent workflow.
+The system implements a comprehensive logging and observability strategy that combines Python's standard library logging with advanced Opik framework integration for complete system monitoring and debugging capabilities across the multi-agent workflow.
 
 **Logging Architecture Principles:**
-- **Unified Standard Library Logging**: Python standard library logging used throughout the entire system
-- **Comprehensive Run Coverage**: Logging covers entry point script AND multi-agent system in a single log
-- **Basic Configuration**: Standard logging setup with INFO level and timestamp format
-- **Component Identification**: Each log entry includes component name for easy debugging
-- **Standard Log Levels**: System uses standard log levels (INFO, WARN, ERROR) for basic coverage
-- **Error Tracking**: All errors are logged with component identification and error details
+- **Dual Output Logging**: Python standard library logging with both file and console handlers for comprehensive coverage
+- **Comprehensive Run Coverage**: Logging covers entry point script AND multi-agent system in a single log with persistent storage
+- **Advanced Configuration**: Enhanced logging setup with INFO, WARNING, ERROR, and DEBUG levels for detailed monitoring
+- **Component Identification**: Each log entry includes component name, timestamp, and detailed context for easy debugging
+- **Enhanced Log Levels**: System uses comprehensive log levels (INFO, WARNING, ERROR, DEBUG) for detailed coverage
+- **Error Tracking**: All errors are logged with component identification, detailed context, and stack traces
+
+**Observability Architecture Principles:**
+- **LangGraph Integration**: OpikTracer provides complete graph execution flow tracking
+- **Function-Level Tracing**: @track decorators enable detailed function execution monitoring
+- **Thread-Based Tracing**: Unique thread_id per question enables isolated trace analysis
+- **Real-Time Monitoring**: Live trace flushing and monitoring capabilities
+- **Execution Analysis**: Comprehensive execution flow analysis and debugging
 
 **Observability Goals:**
 - **Comprehensive Run Visibility**: Complete visibility into entire run from entry point through multi-agent system
-- **Basic Debugging**: Simple text logs enable easy debugging and troubleshooting
-- **Error Tracking**: Comprehensive error logging for failure analysis
-- **Component Monitoring**: Basic operational monitoring through log output
-- **Standard Library**: No external dependencies, uses Python's built-in logging
+- **Advanced Debugging**: Detailed execution traces enable complex debugging scenarios
+- **Performance Analysis**: Comprehensive performance analysis and bottleneck identification
+- **Real-Time Monitoring**: Live monitoring capabilities for operational oversight
+- **Trace Analysis**: Detailed analysis of execution flows and decision patterns
+- **Thread Isolation**: Isolated trace analysis per question processing iteration
 
-#### 7.3.2 Logging Implementation
+#### 7.3.2 Logging and Observability Implementation
 
-**Entry Point Logging:**
-- **Standard Library Logging**: Entry point (main.py) uses Python's standard library logging for the entire run
-- **Comprehensive Run Logging**: Logs cover all actions in the entry point script AND the multi-agent system
-- **Sequential Question Logging**: Covers the entire run including sequential question answering that invokes the multi-agent system once per question
-- **Standard Text-Based Logging**: Logs are stored using Python's standard library logging capabilities
+**Entry Point Logging and Observability:**
+- **Comprehensive Logging**: Entry point (main.py) uses Python's standard library logging with dual output (file and console) for the entire run
+- **Opik Integration**: Entry point configures Opik with use_local=True for real-time trace flushing
+- **Thread-Based Tracing**: Each question processing iteration uses unique thread_id for isolated trace analysis
+- **Comprehensive Run Coverage**: Logs and traces cover all actions in the entry point script AND the multi-agent system
+- **Sequential Question Processing**: Covers the entire run including sequential question answering with isolated tracing per question
+- **Persistent Storage**: Logs are stored using Python's standard library logging capabilities with file persistence
 
-**Multi-Agent System Logging:**
-- **Component Logging**: Each agent and component logs start/completion and errors
-- **Error Logging**: Detailed error messages with component identification
-- **State Validation**: Logging for state validation failures and warnings
-- **Tool Execution**: Tool operations are logged for debugging purposes
-- **Workflow Progression**: Orchestrator logs workflow state transitions
+**Multi-Agent System Logging and Observability:**
+- **Component Logging**: Each agent and component logs start/completion, errors, and state transitions
+- **Error Logging**: Detailed error messages with component identification and context
+- **State Validation**: Logging for state validation failures, warnings, and workflow progression
+- **Tool Execution**: Tool operations are logged for debugging purposes with performance metrics
+- **Workflow Progression**: Orchestrator logs workflow state transitions and decision points
+- **Graph Execution Tracking**: OpikTracer provides complete tracking of all graph nodes and edge traversals
+- **Function-Level Monitoring**: @track decorators enable detailed monitoring of agent function executions
+- **Performance Profiling**: Detailed performance analysis and optimization insights
 
-**Logging Patterns:**
+**Logging and Observability Patterns:**
 - **Start/Completion**: Each component logs when it starts and completes execution
-- **Error Handling**: All errors are logged with detailed error messages
-- **Workflow Progression**: Orchestrator logs workflow state transitions
+- **Error Handling**: All errors are logged with detailed error messages and context
+- **Workflow Progression**: Orchestrator logs workflow state transitions and decision points
+- **Performance Monitoring**: Execution time and performance metrics logging
+- **Thread Isolation**: Each question processing iteration maintains isolated traces and logs
+- **Real-Time Flushing**: Traces are flushed after each question processing iteration
 
-**Logging Benefits:**
-- **Debugging**: Simple text logs enable easy debugging and troubleshooting
-- **Monitoring**: Basic operational monitoring through log output
-- **Error Tracking**: Comprehensive error logging for failure analysis
-- **Standard Library**: No external dependencies, uses Python's built-in logging
+**Logging and Observability Benefits:**
+- **Advanced Debugging**: Comprehensive text logs and execution traces enable detailed debugging and troubleshooting
+- **Performance Analysis**: Execution time and performance metrics for optimization
+- **Real-Time Monitoring**: Live monitoring capabilities for operational oversight
+- **Error Tracking**: Complete error logging for failure analysis and resolution
+- **Trace Analysis**: Detailed analysis of execution flows and decision patterns
+- **Thread-Based Analysis**: Isolated trace analysis per question enables focused debugging
 
 ### 7.4 Testing Strategies
 
 Testing is a first-class concern, with architecture designed for testability at all levels.
 
 **Testable Architecture:** Here are some areas of the architecture that needs to be tested. This is not an exhaustive list.
-- **Entry Point Script:** Configuration loading, factory orchestration, error handling
-- **Multi-Agent System Graph Factory:** Graph building, agent injection, state initialization  
+- **Entry Point Script:** Configuration loading, factory orchestration, error handling, observability setup
+- **Multi-Agent System Graph Factory:** Graph building, agent injection, state initialization, OpikTracer integration
 - **Individual Component Testing:** Agent isolation, tool integration, pure logic separation
 - **Workflow Logic Testing:** Orchestrator decision-making, state transitions, routing
 - **State Management Testing:** GraphState validation, state transitions, subgraph isolation
 - **Agent Communication Testing:** Message routing, orchestrator coordination, filtering
-- **Error Handling Testability:** Error scenarios are designed to be testable and predictable.
-- **Logging Testability:** Test logging features to ensure correct function.
+- **Error Handling Testability:** Error scenarios are designed to be testable and predictable
+- **Logging Testability:** Test logging features to ensure correct function
+- **Observability Testability:** Test OpikTracer integration, @track decorators, and thread-based tracing
+- **Performance Testing:** Test performance monitoring and trace analysis capabilities
 
 **Testing Support:**
 - **Unit Testing:** Pure logic and agent behaviors are covered by unit tests.
@@ -2201,16 +2313,19 @@ Testing is a first-class concern, with architecture designed for testability at 
 **Related Sections**: Section 8 (referenced by architectural decisions section)
 
 **Section Summary:**
-This section covers the error handling, retry logic, quality assurance, testing strategies, and simple logging observability of the multi-agent system, describing how the system maintains reliability, quality, and robustness while providing basic traceability and monitoring capabilities.
+This section covers the error handling, retry logic, quality assurance, testing strategies, and comprehensive logging and observability of the multi-agent system, describing how the system maintains reliability, quality, and robustness while providing advanced traceability, monitoring, and debugging capabilities.
 
 **Key Takeaways:**
 - Comprehensive error handling and critic rejection retry logic ensure system reliability with fail-fast error handling and graceful critic rejection failures
 - Critic agent and feedback loops provide integrated quality control at every workflow step
 - Testing strategies and infrastructure support maintainable, high-quality code and architecture
-- Simple Python standard library logging provides basic observability and debugging capabilities
-- Standard log levels (INFO, WARN, ERROR) provide basic logging coverage
-- Component execution logging enables basic performance analysis and debugging
-- Entry point uses standard library logging for comprehensive run coverage (entry point + multi-agent system)
+- Comprehensive Python standard library logging provides advanced observability and debugging capabilities
+- Enhanced log levels (INFO, WARNING, ERROR, DEBUG) provide detailed logging coverage
+- Opik framework integration provides advanced tracing and monitoring capabilities
+- Thread-based tracing enables isolated analysis of complex multi-agent workflows
+- Real-time monitoring and performance analysis support operational oversight and optimization
+- Component execution logging and tracing enable detailed performance analysis and debugging
+- Entry point uses comprehensive logging and observability for complete run coverage (entry point + multi-agent system)
 
 ---
 
@@ -2336,13 +2451,17 @@ The architecture is designed to support future evolution and adaptation as requi
 - **Retry Logic:** Mechanism for re-attempting failed agent actions when critic rejects their work, up to a configured limit.
 - **Fail-Fast Termination:** System behavior that terminates immediately with clear failure reasons when critical errors occur.
 - **Graceful Critic Rejection Failure:** System behavior where orchestrator sets finalizer as next step and instructs finalizer to return specific final answer with failing agent attribution in reasoning trace when critic rejection retry limits are exceeded.
-- **Python Standard Library Logging:** Simple logging framework providing basic text-based logs with component identification and error tracking.
+- **Python Standard Library Logging:** Comprehensive logging framework providing detailed text-based logs with component identification, error tracking, and persistent storage.
+- **Opik Framework:** Advanced observability and tracing framework providing comprehensive system monitoring, function-level tracing, and performance analysis capabilities.
+- **Thread-Based Tracing:** Unique thread_id per question processing iteration enabling isolated trace analysis and focused debugging.
+- **@track Decorators:** Function-level tracing decorators enabling detailed monitoring of agent function executions and tool usage.
 
 **References:**
 - **Source Code:** See project repository for implementation details.
 - **LangGraph Documentation:** https://langchain-ai.github.io/langgraph/
 - **LangChain Documentation:** https://python.langchain.com/
 - **Pydantic Documentation:** https://docs.pydantic.dev/
+- **Opik Documentation:** https://www.comet.com/docs/opik/
 - **C4 Model:** https://c4model.com/
 - **Mermaid Syntax:** https://mermaid-js.github.io/
 - **GAIA Benchmark:** https://gaia-benchmark.github.io/
@@ -2352,15 +2471,18 @@ The architecture is designed to support future evolution and adaptation as requi
 - Prompt engineering best practices
 - Error handling and resilience in distributed systems
 - Testability and maintainability in AI workflows
+- Observability and monitoring in AI systems
+- Performance analysis and optimization in multi-agent workflows
 
 
 **Section Summary:**
-This section documents the key architectural decisions, alternatives considered, trade-offs, risks, and future evolution plans for the multi-agent system. It also provides a glossary and references for further study.
+This section documents the key architectural decisions, alternatives considered, trade-offs, risks, and future evolution plans for the multi-agent system, including comprehensive observability and monitoring capabilities. It also provides a glossary and references for further study.
 
 **Key Takeaways:**
 - Key design decisions are documented with rationale and alternatives
 - Trade-offs and risks are identified with mitigation strategies
 - Architecture is designed for future extensibility and maintainability
+- Comprehensive observability and monitoring capabilities are integrated throughout the system
 - Glossary and references support onboarding and ongoing learning
 
 ---

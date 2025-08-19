@@ -570,57 +570,46 @@ Include all necessary imports, proper typing, and follow the established pattern
 
 
 ## Prompting to Write Code (Plan from LLM)
+### Request:
 I want to be able to have you follow the TESTING.md document and write all the test files and test code.
 However, I don't know how to get you to do it the right way.
-There seems to be a lot of content to write and has to be done in multiple phases.
-What would be the logical steps that you need to follow to write the test code correctly?
+There seems to be a lot of content to write and has to be done in multiple, focused phases.
+
+### Plan Requirements:
+The plan must:
+- Be written in logical order 
+- Reference the TESTING.md document to proper context can be included.
+- Have phases to create the file and folder structures
+- Have phases to create to write test cases for every single unit test defined in the TESTING.md file
+- Have phases to create to write test cases for every single integration test defined in the TESTING.md file
+- Have phases to create to write test cases for every single system test defined in the TESTING.md file
+- Have phases to create all other fixtures, test data structures, mocks, requirements, config, ini files, etc. that are defined in the TESTING.md file
+- Make sure ALL code is written as described in the TESTING.md file.
+
+### Phase Requirements:
+- I do not want you to try to do too much with a single phase.
+-Each phase should focus on general aspects:
+    - create folder and file structure
+    - which files and code should be written in what order
+    - which unit, integration, system tests to write
+    - other files / code to write
+    - be thorough enough to make sure all test code is written correctly
+- Each phase must also include instructions to execute the phase successfully, including referencing the TESTING.md document in the instructions.
+
+I want a plan written in a markdown file
+What would be a good prompt to get you to develop a plan like this?
+Generate the prompt as raw markdown.
 
 
-## Phase 1 Meta Prompting:
-I want you to follow phase 1 of the plan in test_code_writing_plan.md.
-What prompt do you need to be able to correctly do this?
 
-## Phase 1 LLM generated prompt:
-I want you to implement Phase 1 of the test infrastructure setup for the multi-agent system. Please create the complete test directory structure and implement all the test infrastructure utilities from Section 6 of the TESTING.md document.
 
-**Requirements:**
-
-1. **Create the test directory structure:**
-   - Create `tests/` directory with subdirectories: `unit/`, `integration/`, `system/`, `performance/`
-   - Create `tests/conftest.py` for shared pytest fixtures
-   - Create `tests/__init__.py` files
-
-2. **Implement Section 6.1 Test Fixtures in `tests/conftest.py`:**
-   - **6.1.1 Agent Configuration Fixtures:** `agent_config_fixture`, `llm_fixture`, `agent_configs_fixture`, `minimal_agent_config_fixture`
-   - **6.1.2 State Management Fixtures:** `graph_state_fixture`, `researcher_state_fixture`, `expert_state_fixture`, `agent_message_fixture`, `complete_workflow_state_fixture`, `edge_case_state_fixture`
-   - **6.1.3 Mock Data Fixtures:** `mock_llm_response_fixture`, `mock_document_fixture`, `mock_external_service_fixture`, `mock_file_content_fixture`, `mock_tool_response_fixture`, `mock_error_response_fixture`
-
-3. **Create `tests/utils/` directory with utility modules:**
-   - **`tests/utils/mock_configurations.py`** - Implement Section 6.2 Mock Configurations:
-     - **6.2.1 LLM Mock Configurations:** `configure_llm_mock`, `configure_llm_factory_mock`, `configure_structured_output_mock`, `configure_multiple_llm_mocks`, `configure_llm_error_mock`
-     - **6.2.2 External Service Mocks:** `configure_youtube_service_mock`, `configure_wikipedia_service_mock`, `configure_web_search_service_mock`, `configure_browser_mcp_service_mock`, `configure_file_loader_service_mock`, `configure_external_service_error_mock`, `configure_multiple_external_services_mock`
-     - **6.2.3 File System Mocks:** `configure_file_io_mock`, `configure_path_operations_mock`, `configure_json_operations_mock`, `configure_prompt_file_mock`, `configure_file_system_error_mock`, `configure_large_file_mock`, `configure_special_characters_file_mock`, `configure_jsonl_file_mock`, `configure_directory_structure_mock`
-
-   - **`tests/utils/test_utilities.py`** - Implement Section 6.3 Test Utilities:
-     - **6.3.1 Test Data Generators:** `generate_test_questions`, `generate_agent_messages`, `generate_test_responses`, `generate_test_documents`, `generate_test_state_data`, `generate_test_config_data`
-     - **6.3.2 Assertion Helpers:** `assert_agent_message_valid`, `assert_graph_state_valid`, `assert_llm_response_valid`, `assert_agent_config_valid`, `assert_document_valid`, `assert_workflow_progression_valid`, `assert_error_handling_valid`, `assert_performance_valid`
-     - **6.3.3 Mock Setup Utilities:** `setup_complete_mock_environment`, `setup_agent_mocks`, `setup_external_service_mocks`, `setup_file_system_mocks`, `mock_environment_context`, `setup_error_scenario_mocks`, `setup_performance_test_mocks`, `setup_large_data_mocks`
-
-4. **Follow the exact specifications from TESTING.md:**
-   - Use the exact function signatures, parameters, and return types specified
-   - Include all the test cases (happy path, edge cases, error conditions) as specified
-   - Implement all the code examples exactly as written in the document
-   - Include proper imports and dependencies
-   - Follow the established patterns and structure
-
-5. **Create proper Python modules:**
-   - Add `__init__.py` files to make directories proper Python packages
-   - Include proper imports and exports
-   - Ensure all functions are properly typed and documented
-
-6. **Test the infrastructure:**
-   - Create simple test files to verify the infrastructure works correctly
-   - Ensure all fixtures and utilities can be imported and used
-   - Verify that the mock configurations work as expected
-
-Please implement this infrastructure exactly as specified in the TESTING.md document, following all the detailed specifications, function signatures, and code examples provided in Sections 6.1, 6.2, and 6.3.
+## Plan Phase Meta Prompt:
+I need you to follow the contents of the TESTING.md file EXACTLY to create all the tests and supporting files outlined in the TESTING.md document.
+I don't know how to write a prompt that enable you to complete this task successfully.
+What's worse is the TESTING.md document is quite large and describes many aspects about tests in detail.
+I have doubts about there being 1 singular prompt to give you to write all the test cases.
+Instead, I think it's best to have a series of multiple prompts written such that when executed in a specific order the tests can be completely and correctly written as described in the TESTING.md document.
+Think of these prompts as logical steps to create the tests.
+So, what would be a good set of prompts that would accomplish this?
+Verify that ALL the prompts can collectively create the tests defined in the TESTING.md document.
+Write them into a markdown file.

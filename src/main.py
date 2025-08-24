@@ -65,14 +65,9 @@ def load_baseline_prompts(prompts_dir: str = None) -> dict:
     logger.info(f"Loading prompts from directory: {prompts_dir}")
     
     prompt_files = {
-        "planner": "planner_system_prompt.txt",
-        "critic_planner": "critic_planner_system_prompt.txt",
-        "researcher": "researcher_system_prompt.txt",
-        "critic_researcher": "critic_researcher_system_prompt.txt",
-        "expert": "expert_system_prompt.txt",
-        "critic_expert": "critic_expert_system_prompt.txt",
-        "finalizer": "finalizer_system_prompt.txt"
-    }
+        "executor": "executor_system_prompt.txt",
+        "guard": "guard_system_prompt.txt",
+        }
     
     prompts = {}
     for agent_name, filename in prompt_files.items():
@@ -138,14 +133,83 @@ def make_agent_configs(prompts: dict) -> dict[str, AgentConfig]:
     """
     logger.info("Creating agent configurations...")
     configs = {
-        "planner": AgentConfig(name="planner", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"research_steps": list[str], "expert_steps": list[str]}, system_prompt=prompts["planner"], retry_limit=5),
-        "researcher": AgentConfig(name="researcher", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"result": str}, system_prompt=prompts["researcher"], retry_limit=5),
-        "expert": AgentConfig(name="expert", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"expert_answer": str, "reasoning_trace": str}, system_prompt=prompts["expert"], retry_limit=5),
-        "critic": AgentConfig(name="critic", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"decision": Literal["approve", "reject"], "feedback": str}, system_prompt={"critic_planner":prompts["critic_planner"], "critic_researcher":prompts["critic_researcher"], "critic_expert":prompts["critic_expert"]}, retry_limit=None),
-        "finalizer": AgentConfig(name="finalizer", provider="openai", model="gpt-4o-mini", temperature=0.0, output_schema={"final_answer": str, "final_reasoning_trace": str}, system_prompt=prompts["finalizer"], retry_limit=None),
+        "executor": AgentConfig(name="executor", provider="openai", model="o4-mini", temperature=1.0, system_prompt=prompts["executor"], output_schema={"final_answer": str, "reasoning_trace": str}),
+        "guard": AgentConfig(name="guard", provider="openai", model="o4-mini", temperature=1.0, system_prompt=prompts["guard"]),
+        "web_browser": AgentConfig(name="web_browser", provider="openai", model="o4-mini", temperature=1.0, system_prompt=prompts["web_browser"]),
     }
     logger.info(f"Created {len(configs)} agent configurations")
     return configs
+
+
+def parse_agent_output(result: dict) -> dict:
+    """
+    Parse the output of the agent.
+    This function is used to parse the output of the agent and extract the model answer and the reasoning trace.
+    If the agent output is not a valid JSON, it will try to extract the model answer and the reasoning trace from the last message.
+    If the last message is not a valid JSON, it will use the raw response as the model answer and the reasoning trace.
+    If all else fails, it will set a default model answer and reasoning trace to "I could not answer the question." and "Something went wrong." respectively.
+
+    Args:
+        result (dict): The result of the agent
+
+    Returns:
+        tuple: A tuple containing the model answer and the reasoning trace
+    """
+    # Parse the output state to extract final_answer and reasoning_trace
+    model_answer = ""
+    reasoning_trace = ""
+    
+    # Get the last message from the state
+    if "messages" in result and result["messages"]:
+        last_message = result["messages"][-1]
+        last_message_content = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        
+        try:
+            # First try to parse the message content directly as JSON
+            output_json = json.loads(last_message_content)
+            if "final_answer" in output_json and "reasoning_trace" in output_json:
+                model_answer = output_json["final_answer"]
+                reasoning_trace = output_json["reasoning_trace"]
+            else:
+                raise ValueError("JSON missing required fields")
+        except (ValueError, KeyError, json.JSONDecodeError) as e:
+            logger.warning(f"Failed to parse JSON directly: {e}")
+            # Fallback: try to extract JSON from the response
+            import re
+            
+            # Look for JSON in the response with more flexible pattern
+            json_patterns = [
+                r'\{[^{}]*"final_answer"[^{}]*"reasoning_trace"[^{}]*\}',
+                r'\{[^{}]*"final_answer"[^{}]*\}',
+                r'\{[^{}]*"reasoning_trace"[^{}]*"final_answer"[^{}]*\}'
+            ]
+            
+            for pattern in json_patterns:
+                json_match = re.search(pattern, last_message_content, re.DOTALL)
+                if json_match:
+                    try:
+                        fallback_json = json.loads(json_match.group())
+                        model_answer = fallback_json.get("final_answer", "")
+                        reasoning_trace = fallback_json.get("reasoning_trace", "")
+                        if model_answer and reasoning_trace:
+                            logger.info("Successfully extracted JSON using fallback pattern")
+                            break
+                    except json.JSONDecodeError:
+                        continue
+            
+            # If still no valid JSON found, use the raw response
+            if not model_answer:
+                model_answer = last_message_content
+                reasoning_trace = "Raw response used as final answer"
+                logger.warning("Using raw response as final answer")
+    
+    # Also try to get from state if available
+    if not model_answer:
+        model_answer = result.get("final_answer", "I could not answer the question.")
+    if not reasoning_trace:
+        reasoning_trace = result.get("reasoning_trace", "Something went wrong.")
+
+    return model_answer, reasoning_trace
 
 
 def main() -> None:
@@ -170,7 +234,7 @@ def main() -> None:
         graph, opik_tracer = create_multi_agent_graph(agent_configs)
         logger.info("Graph created successfully!")
         
-        jsonl_file_path = "/home/joe/python-proj/hf-ai-agents-course/src/hello_world.jsonl"
+        jsonl_file_path = "/home/joe/python-proj/hf-ai-agents-course/src/gaia_lvl1.jsonl"
         
         responses = []
         logger.info("Starting to process JSONL file...")
@@ -187,11 +251,14 @@ def main() -> None:
                 }
                 
                 if item["file_name"] != "":
-                    file_path = f"/home/joe/datum/gaia_lvl1/{item['file_name']}"
+                    file_path = f"/home/joe/datum/gaia_level1/{item['file_name']}"
                 else:
                     file_path = ""
                 result = graph.invoke({"question": item["Question"], "file": file_path}, config=config)
-                response = {"task_id": item["task_id"], "model_answer": result["final_answer"], "reasoning_trace": result["final_reasoning_trace"], "thread_id": thread_id}
+                
+                model_answer, reasoning_trace = parse_agent_output(result)
+                
+                response = {"task_id": item["task_id"], "model_answer": model_answer, "reasoning_trace": reasoning_trace, "thread_id": thread_id}
 
                 responses.append(response)
                 logger.info(f"Completed question: {item["Question"]}")
